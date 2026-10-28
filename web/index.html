@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pyflow</title>
+  <meta name="description" content="Drop a Python file, search a variable or function, and see where its values come from and where they go. Runs entirely in your browser.">
+  <link rel="stylesheet" href="style.css">
+  <!-- Graph drawing: Cytoscape.js with the dagre layered (left-to-right) layout -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.30.2/cytoscape.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dagre/0.8.5/dagre.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.js"></script>
+  <!-- Python in the browser; the analyzer itself is plain Python using ast -->
+  <script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <h1>pyflow</h1>
+      <span class="tagline" data-i18n="tagline">See where values come from and where they go</span>
+    </div>
+    <div class="topbar-right">
+      <span id="status" class="status" role="status" aria-live="polite"></span>
+      <button id="lang-toggle" class="ghost" type="button" aria-label="Switch language">中文</button>
+      <a class="ghost" href="https://github.com/archi9882/Hackthon/tree/main/pyflow" target="_blank" rel="noopener">GitHub</a>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="sidebar">
+      <!-- 1. Input -->
+      <section class="panel">
+        <label id="drop-zone" class="drop-zone" for="file-input" tabindex="0">
+          <strong data-i18n="drop.title">Drop a .py file here</strong>
+          <span data-i18n="drop.hint">or click to choose. The file never leaves your browser.</span>
+        </label>
+        <input id="file-input" type="file" accept=".py,.pyw,text/x-python" hidden>
+        <div class="row">
+          <label for="example-select" data-i18n="example.label">Example</label>
+          <select id="example-select"></select>
+        </div>
+        <p id="file-info" class="muted"></p>
+      </section>
+
+      <!-- 2. Search -->
+      <section class="panel">
+        <label for="search" class="panel-title" data-i18n="search.label">Variable or function</label>
+        <div class="search-wrap">
+          <input id="search" type="search" autocomplete="off" spellcheck="false"
+                 role="combobox" aria-expanded="false" aria-controls="candidates" aria-autocomplete="list"
+                 data-i18n-placeholder="search.placeholder" placeholder="e.g. total, load, Cart.add">
+          <ul id="candidates" class="candidates" role="listbox" hidden></ul>
+        </div>
+        <button id="overview-btn" class="link" type="button" data-i18n="search.overview">Show whole-file call graph</button>
+      </section>
+
+      <!-- 3. View controls -->
+      <section class="panel">
+        <div class="row">
+          <label for="depth" data-i18n="ctl.depth">Depth</label>
+          <input id="depth" type="range" min="1" max="6" value="2">
+          <output id="depth-value" for="depth">2</output>
+        </div>
+        <div class="row">
+          <label for="direction" data-i18n="ctl.direction">Direction</label>
+          <select id="direction">
+            <option value="both" data-i18n="dir.both">Both</option>
+            <option value="upstream" data-i18n="dir.upstream">Upstream only</option>
+            <option value="downstream" data-i18n="dir.downstream">Downstream only</option>
+          </select>
+        </div>
+        <fieldset class="row checks">
+          <legend data-i18n="ctl.edges">Edges</legend>
+          <label><input id="fam-call" type="checkbox" checked> <span data-i18n="fam.call">Calls</span></label>
+          <label><input id="fam-data" type="checkbox" checked> <span data-i18n="fam.data">Data flow</span></label>
+        </fieldset>
+      </section>
+
+      <!-- 4. Legend -->
+      <section class="panel legend">
+        <h2 class="panel-title" data-i18n="legend.title">Legend</h2>
+        <ul>
+          <li><i class="sw sw-up"></i><span data-i18n="legend.up">Upstream: where it comes from</span></li>
+          <li><i class="sw sw-center"></i><span data-i18n="legend.center">Selected</span></li>
+          <li><i class="sw sw-down"></i><span data-i18n="legend.down">Downstream: where it goes</span></li>
+          <li><i class="shape shape-fn"></i><span data-i18n="legend.fn">Function / method / class</span></li>
+          <li><i class="shape shape-var"></i><span data-i18n="legend.var">Variable / parameter</span></li>
+          <li><i class="shape shape-ext"></i><span data-i18n="legend.ext">External call (library, builtin)</span></li>
+          <li><i class="shape shape-flag"></i><span data-i18n="legend.flag">Has unsupported constructs</span></li>
+          <li><i class="line line-call"></i><span data-i18n="legend.call">Call</span></li>
+          <li><i class="line line-data"></i><span data-i18n="legend.data">Data flow</span></li>
+        </ul>
+      </section>
+    </aside>
+
+    <section class="graph-area">
+      <div id="graph" class="graph" aria-label="Flow graph"></div>
+      <div id="graph-empty" class="graph-empty">
+        <p data-i18n="empty.loading">Loading the Python runtime (about 10 MB, first visit only)...</p>
+      </div>
+      <div id="graph-hint" class="graph-hint" data-i18n="graph.hint">Click a node to make it the center. Scroll to zoom, drag to pan.</div>
+    </section>
+
+    <aside class="inspector">
+      <section class="panel">
+        <h2 class="panel-title" data-i18n="details.title">Details</h2>
+        <div id="details" class="details muted" data-i18n="details.none">Select a node.</div>
+      </section>
+      <section class="panel">
+        <h2 class="panel-title"><span data-i18n="unsup.title">Not analyzed</span> <span id="unsup-count" class="badge">0</span></h2>
+        <p class="muted small" data-i18n="unsup.hint">pyflow reads code without running it. These spots may hide extra flow:</p>
+        <ul id="unsupported" class="unsupported"></ul>
+      </section>
+      <section class="panel code-panel">
+        <h2 class="panel-title" data-i18n="code.title">Source</h2>
+        <ol id="code" class="code"></ol>
+      </section>
+    </aside>
+  </main>
+
+  <div id="drop-overlay" class="drop-overlay" hidden><span data-i18n="drop.overlay">Drop to analyze</span></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
