@@ -215,6 +215,96 @@ def test_default_value_flows_into_parameter(graph):
     assert g.has("var:<module>:DEFAULT", "var:f:n", "assign")
 
 
+# ----- attributes, inheritance and containers -----------------------------------
+
+def test_self_attributes_connect_methods(graph):
+    g = graph("""
+        class Cart:
+            def __init__(self, rate):
+                self.rate = rate
+                self.items = []
+            def add(self, price):
+                self.items.append(price)
+            def total(self):
+                base = sum(self.items)
+                return base * self.rate
+    """)
+    assert g.nodes["var:Cart:rate"]["kind"] == "attribute"
+    assert g.has("var:Cart.__init__:rate", "var:Cart:rate", "assign")
+    assert g.has("var:Cart.add:price", "var:Cart:items", "assign")  # append() fills the list
+    assert g.has("var:Cart:items", "var:Cart.total:base", "assign")
+    assert g.has("var:Cart:rate", "fn:Cart.total", "return")
+    assert g.unsupported("attribute") == []
+
+
+def test_instance_attributes_and_dataclass_fields_are_the_same_node(graph):
+    g = graph("""
+        from dataclasses import dataclass
+        @dataclass
+        class Product:
+            name: str
+            price: float
+            def label(self):
+                return self.name
+        cost = 3.0
+        p = Product("pen", cost)
+        shown = p.price
+    """)
+    assert g.has("var:<module>:cost", "var:Product:price", "arg")
+    assert g.has("var:Product:price", "var:<module>:shown", "assign")
+    assert g.has("var:Product:name", "fn:Product.label", "return")
+
+
+def test_inherited_methods_attributes_and_super(graph):
+    g = graph("""
+        class Base:
+            def __init__(self, size):
+                self.size = size
+            def describe(self):
+                return self.size
+        class Child(Base):
+            def __init__(self, size, color):
+                super().__init__(size)
+                self.color = color
+            def show(self):
+                return self.describe()
+        c = Child(1, "red")
+        c.describe()
+    """)
+    assert g.has("fn:Child.show", "fn:Base.describe", "call")  # inherited method
+    assert g.has("fn:Child.__init__", "fn:Base.__init__", "call")  # super()
+    assert g.has("var:Child.__init__:size", "var:Base.__init__:size", "arg")
+    assert g.has("fn:<module>", "fn:Base.describe", "call")
+    assert "var:Child:size" not in g.nodes  # attribute lives on the class that sets it
+
+
+def test_container_mutation(graph):
+    g = graph("""
+        rows = []
+        value = 1
+        rows.append(value)
+        lookup = {}
+        lookup.update(extra=value)
+        table = {}
+        table["k"] = value
+    """)
+    assert g.has("var:<module>:value", "var:<module>:rows", "assign")
+    assert g.has("var:<module>:value", "var:<module>:lookup", "assign")
+    assert g.has("var:<module>:value", "var:<module>:table", "assign")
+
+
+def test_self_inside_nested_function_is_not_a_variable(graph):
+    g = graph("""
+        class A:
+            def run(self):
+                def inner():
+                    return self.value
+                return inner()
+    """)
+    assert not any(n.endswith(":self") for n in g.nodes)
+    assert g.has("var:A:value", "fn:A.run.inner", "return")
+
+
 # ----- unsupported constructs are reported, not hidden ----------------------------
 
 def test_unsupported_constructs_are_reported(graph):
@@ -230,7 +320,6 @@ def test_unsupported_constructs_are_reported(graph):
             return getattr(args, "x")
         f(*[1], **{})
     """)
-    assert [u["detail"] for u in g.unsupported("attribute")] == ["self.v"]
     assert {u["detail"] for u in g.unsupported("star_args")} >= {"*args parameter", "**kwargs parameter"}
     assert [u["detail"] for u in g.unsupported("decorator")] == ["@deco"]
     assert [u["detail"] for u in g.unsupported("dynamic")] == ["getattr()"]

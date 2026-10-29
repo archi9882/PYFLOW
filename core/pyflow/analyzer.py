@@ -10,7 +10,8 @@ The analyzer makes two passes over the ``ast`` tree:
 
 Graph vocabulary
 ----------------
-Node kinds: module, function, method, class, parameter, variable, external.
+Node kinds: module, function, method, class, parameter, variable,
+attribute (``self.x`` / class attributes / dataclass fields), external.
 
 Edge kinds:
     call    caller function -> callee function (the call graph)
@@ -35,6 +36,11 @@ MODULE_ID = "fn:" + MODULE
 # Calls that change program structure at run time; static analysis cannot follow them.
 DYNAMIC_CALLS = frozenset(
     {"getattr", "setattr", "delattr", "exec", "eval", "compile", "globals", "locals", "vars", "__import__"}
+)
+
+# Methods that put their arguments into the receiver: items.append(x) means x flows into items.
+MUTATORS = frozenset(
+    {"append", "extend", "insert", "add", "update", "setdefault", "appendleft", "extendleft", "put", "push"}
 )
 
 # Decorators that do not change how arguments map onto parameters.
@@ -106,6 +112,8 @@ class Scope:
     declared_nonlocal: set[str] = field(default_factory=set)
     self_name: str | None = None  # first parameter of a method ("self" / "cls")
     owner_class: Scope | None = None  # class scope that owns this method
+    attrs: set[str] = field(default_factory=set)  # class only: names assigned via self.<name>
+    bases: list[ast.expr] = field(default_factory=list)  # class only: base class expressions
 
 
 def _walk_local(node: ast.AST) -> Iterator[ast.AST]:
@@ -144,6 +152,9 @@ def _call_name(func: ast.AST) -> str:
         return _call_name(func.func) + "()"
     if isinstance(func, ast.Subscript):
         return _call_name(func.value) + "[]"
+    if isinstance(func, ast.Constant):
+        text = repr(func.value)  # ", ".join -> '", ".join' rather than '<expr>.join'
+        return text if len(text) <= 12 else text[:10] + "…" + text[-1]
     return "<expr>"
 
 
@@ -178,7 +189,7 @@ class _Analyzer:
     def _var(self, scope: Scope, name: str, line: int | None = None) -> str:
         """Node id of a variable, created on first use. ``line`` marks a binding site."""
         nid = f"var:{scope.qualname}:{name}"
-        self._add_node(nid, name, "variable", scope.qualname, line)
+        self._add_node(nid, name, "attribute" if scope.kind == "class" else "variable", scope.qualname, line)
         return nid
 
     def _edge(self, source: str, target: str, kind: str, line: int) -> None:
@@ -285,6 +296,13 @@ class _Analyzer:
         for name in sorted(decorators - HARMLESS_DECORATORS):
             self._unsupported("decorator", node.lineno, scope, f"@{name}", nid)
 
+        # Attributes this method sets on self (self.x = ..., self.x += ...).
+        if is_method and scope.self_name:
+            for sub in ast.walk(node):
+                if (isinstance(sub, ast.Attribute) and isinstance(sub.ctx, ast.Store)
+                        and isinstance(sub.value, ast.Name) and sub.value.id == scope.self_name):
+                    parent.attrs.add(sub.attr)
+
         self._declare_body(node.body, scope)
 
     def _declare_class(self, node: ast.ClassDef, parent: Scope) -> None:
@@ -293,24 +311,20 @@ class _Analyzer:
         self._add_node(nid, node.name, "class", parent.qualname, node.lineno)
         parent.defs[node.name] = nid
 
-        scope = Scope(qual, "class", nid, parent)
+        scope = Scope(qual, "class", nid, parent, bases=list(node.bases))
         self.scopes[id(node)] = scope
         self.class_scopes[nid] = scope
         self._declare_body(node.body, scope)
 
-        # Calling the class runs __init__; without one, assume dataclass-style
-        # fields declared as annotated class attributes, in order.
-        init = scope.defs.get("__init__")
-        if init is not None:
-            self.funcinfo[nid] = self.funcinfo[init]
-        else:
-            info = FuncInfo()
-            for stmt in node.body:
-                if isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name):
-                    fid = self._var(scope, stmt.target.id, stmt.lineno)
-                    info.positional.append(fid)
-                    info.by_name[stmt.target.id] = fid
-            self.funcinfo[nid] = info
+        # Dataclass-style fields: annotated class attributes, in order. Used as the
+        # constructor signature when no __init__ is found (see _callee_info).
+        info = FuncInfo()
+        for stmt in node.body:
+            if isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name):
+                fid = self._var(scope, stmt.target.id, stmt.lineno)
+                info.positional.append(fid)
+                info.by_name[stmt.target.id] = fid
+        self.funcinfo[nid] = info
 
     # ----- name resolution --------------------------------------------------------
 
@@ -329,6 +343,8 @@ class _Analyzer:
             if s.kind == "class" and not first:
                 s = s.parent
                 continue
+            if name == s.self_name:
+                return None  # self used from a function nested in a method
             if name in s.defs:
                 return s.defs[name]
             if name in s.imports:
@@ -362,18 +378,100 @@ class _Analyzer:
                 return None
             nid = self._lookup(func.id, scope)
             return nid if nid and nid.startswith("fn:") else None
-        if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
-            base = func.value.id
-            if base == scope.self_name and scope.owner_class is not None:
-                return scope.owner_class.defs.get(func.attr)
-            if base in bound:
-                return None
-            ref = self._lookup(base, scope)
-            # Cart.method(...) or cart.method(...) where cart = Cart(...) / cart: Cart
-            cls = self.instance_of.get(ref, ref)
-            if cls in self.class_scopes:
-                return self.class_scopes[cls].defs.get(func.attr)
+        if not isinstance(func, ast.Attribute):
+            return None
+        # super().method(): look in the base classes of the enclosing method's class.
+        if (isinstance(func.value, ast.Call) and isinstance(func.value.func, ast.Name)
+                and func.value.func.id == "super"):
+            owner = self._owner_class(scope)
+            return self._find_in_mro(owner, func.attr, skip_self=True) if owner else None
+        # self.method(), Cart.method(), cart.method() where cart = Cart(...) / cart: Cart
+        cls = self._receiver_class(func.value, scope, bound)
+        return self._find_in_mro(cls, func.attr) if cls else None
+
+    # ----- classes and attributes ---------------------------------------------------
+
+    def _owner_class(self, scope: Scope) -> str | None:
+        """Class id of the method enclosing ``scope`` (also from nested functions)."""
+        s = scope
+        while s is not None:
+            if s.owner_class is not None:
+                return s.owner_class.node_id
+            s = s.parent
         return None
+
+    def _receiver_class(self, expr: ast.expr, scope: Scope, bound: frozenset[str] = frozenset()) -> str | None:
+        """Class defined in this file that ``expr`` is an instance of (or is), if known."""
+        if not isinstance(expr, ast.Name) or expr.id in bound:
+            return None
+        s = scope
+        while s is not None:  # self, possibly from a function nested in a method
+            if s.kind == "function" and expr.id == s.self_name:
+                return s.owner_class.node_id if s.owner_class else None
+            if expr.id in s.locals:
+                break
+            s = s.parent
+        ref = self._lookup(expr.id, scope)
+        cls = self.instance_of.get(ref, ref)
+        return cls if cls in self.class_scopes else None
+
+    def _mro(self, cls: str) -> list[str]:
+        """The class followed by its in-file base classes, depth first."""
+        order, stack = [], [cls]
+        while stack:
+            cur = stack.pop(0)
+            if cur in order or cur not in self.class_scopes:
+                continue
+            order.append(cur)
+            scope = self.class_scopes[cur]
+            bases = [self._class_ref(b, scope.parent) for b in scope.bases]
+            stack = [b for b in bases if b] + stack
+        return order
+
+    def _find_in_mro(self, cls: str, name: str, skip_self: bool = False) -> str | None:
+        """Method ``name`` on ``cls`` or the first in-file base class that defines it."""
+        for c in self._mro(cls)[1 if skip_self else 0:]:
+            found = self.class_scopes[c].defs.get(name)
+            if found:
+                return found
+        return None
+
+    def _attribute(self, cls: str, name: str, line: int | None = None) -> str | None:
+        """Node for attribute ``name`` of ``cls``: on the class (or base) that defines it.
+
+        Returns None when the name is a method, so ``self.helper`` used as a
+        value is not mistaken for data.
+        """
+        mro = self._mro(cls)
+        for c in mro:
+            scope = self.class_scopes[c]
+            if name in scope.attrs or name in scope.locals:
+                return self._var(scope, name, line)
+        if self._find_in_mro(cls, name):
+            return None
+        return self._var(self.class_scopes[cls], name, line)
+
+    def _container(self, expr: ast.expr, scope: Scope) -> str | None:
+        """Node changed when ``expr`` is mutated: items, self.items, d[k], obj.attr -> obj."""
+        if isinstance(expr, ast.Name):
+            nid = self._lookup(expr.id, scope)
+            return nid if nid and nid.startswith("var:") else None
+        if isinstance(expr, ast.Attribute):
+            cls = self._receiver_class(expr.value, scope)
+            if cls:
+                return self._attribute(cls, expr.attr)
+            return self._container(expr.value, scope)
+        if isinstance(expr, ast.Subscript):
+            return self._container(expr.value, scope)
+        return None
+
+    def _callee_info(self, callee: str) -> FuncInfo:
+        """Argument mapping; for a class, its (possibly inherited) __init__ or its fields."""
+        if callee in self.class_scopes:
+            init = self._find_in_mro(callee, "__init__")
+            if init:
+                return self.funcinfo[init]
+        return self.funcinfo.get(callee, FuncInfo())
 
     def _class_ref(self, expr: ast.expr | None, scope: Scope) -> str | None:
         """Class defined in this file that an annotation like ``Product`` names."""
@@ -505,15 +603,15 @@ class _Analyzer:
         elif isinstance(target, ast.Starred):
             self._bind(target.value, sources, scope, line)
         elif isinstance(target, (ast.Attribute, ast.Subscript)):
-            base = _root_name(target)
-            if base is not None and base == scope.self_name:
-                self._unsupported("attribute", line, scope, f"{base}.{getattr(target, 'attr', '[...]')}")
-                return
-            # obj.attr = v / d[k] = v: treat as mutating the base variable.
+            # self.x = v -> attribute x; d[k] = v / obj.attr = v (unknown class) -> d / obj.
             extra = self._sources(target.slice, scope) if isinstance(target, ast.Subscript) else set()
-            base_id = self._lookup(base, scope) if base else None
-            if base_id and base_id.startswith("var:"):
-                self._flow(sources | extra, base_id, "assign", line)
+            if isinstance(target, ast.Attribute) and self._receiver_class(target.value, scope):
+                container = self._attribute(self._receiver_class(target.value, scope), target.attr, line)
+            else:
+                container = self._container(target, scope)
+            self._flow(sources | extra, container, "assign", line)
+            if container and len(sources) == 1 and next(iter(sources)) in self.class_scopes:
+                self.instance_of[container] = next(iter(sources))  # self.cart = Cart()
 
     # ----- expressions ------------------------------------------------------------
 
@@ -556,10 +654,18 @@ class _Analyzer:
             for elt in elts:
                 out |= self._sources(elt, scope, inner)
             return out
-        if isinstance(expr, ast.Attribute) and isinstance(expr.value, ast.Name) \
-                and expr.value.id == scope.self_name and expr.value.id not in bound:
-            self._unsupported("attribute", expr.lineno, scope, f"{expr.value.id}.{expr.attr}")
-            return out
+        if isinstance(expr, ast.Attribute):
+            # self.x / cart.total / Cart.RATE: read the attribute node of a known class.
+            cls = self._receiver_class(expr.value, scope, bound)
+            if cls:
+                nid = self._attribute(cls, expr.attr)
+                return {nid} if nid else out
+            # self.cart.items: attribute of an attribute whose class is known.
+            inner = self._sources(expr.value, scope, bound)
+            if len(inner) == 1 and next(iter(inner)) in self.instance_of:
+                nid = self._attribute(self.instance_of[next(iter(inner))], expr.attr)
+                return {nid} if nid else inner
+            return inner
         for child in ast.iter_child_nodes(expr):
             out |= self._sources(child, scope, bound)
         return out
@@ -576,7 +682,7 @@ class _Analyzer:
         if callee is not None:
             # Defined in this file: map each argument onto the matching parameter.
             self._edge(caller, callee, "call", line)
-            info = self.funcinfo.get(callee, FuncInfo())
+            info = self._callee_info(callee)
             for index, arg in enumerate(call.args):
                 if isinstance(arg, ast.Starred):
                     self._unsupported("star_args", line, scope, f"*{_call_name(arg.value)} passed to {func_label(callee)}")
@@ -601,6 +707,12 @@ class _Analyzer:
         for kw in call.keywords:
             sources |= self._sources(kw.value, scope, bound)
         self._flow(sources, ext, "arg", line)
+        if isinstance(func, ast.Attribute) and func.attr in MUTATORS:
+            # items.append(x) / self.items.append(x): x now lives inside items.
+            args = set()
+            for arg in [*call.args, *(k.value for k in call.keywords)]:
+                args |= self._sources(arg.value if isinstance(arg, ast.Starred) else arg, scope, bound)
+            self._flow(args, self._container(func.value, scope), "assign", line)
         # The external node is a sink: it never feeds data onward, otherwise every
         # print() / len() would connect unrelated variables to each other.
         return sources

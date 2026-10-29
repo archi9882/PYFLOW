@@ -11,6 +11,18 @@ where its values come from and where they go.
 - Nothing to install: the analyzer is plain Python, run by [Pyodide](https://pyodide.org).
 - Works on any `.py` file: scripts, function modules, classes, data pipelines.
 
+## Run it locally
+
+```bash
+cd pyflow
+python scripts/serve.py
+```
+
+This builds the site, downloads the libraries it needs once (about 14 MB,
+checked against the npm registry's published hashes and cached in
+`.vendor-cache/`), serves it at http://127.0.0.1:8000 and opens your browser.
+After the first run it works offline. Requires Python 3.10+; no other packages.
+
 ## How to use
 
 1. Open the demo and drop a `.py` file on the page (or pick an example).
@@ -22,7 +34,16 @@ where its values come from and where they go.
    - **blue, middle**: the name you picked
    - **green, right**: downstream, where the value goes
 5. Click any node to make it the new center. Adjust **Depth**, **Direction**
-   and the **Calls / Data flow** filters in the sidebar.
+   and the **Calls / Data flow / External calls** filters in the sidebar.
+
+Also on the page:
+
+- **Hover** a node to trace the exact path between it and the center.
+- **Click a line** in the source panel to jump to the names defined or used there.
+- Lines involved in the current view are marked in the source panel.
+- Methods and attributes of a class are drawn inside a class box when the
+  layout allows it; large files fold methods into their class in the overview.
+- Press <kbd>/</kbd> to jump to the search box. English and Traditional Chinese, light and dark.
 
 ## What the graph shows
 
@@ -42,7 +63,10 @@ Supported in this version:
 - comprehensions, lambdas, `with ... as`, `except ... as`, the walrus operator
 - methods called through `self`, through the class, or through an instance
   created in the same scope (`cart = Cart(); cart.add(...)`) or annotated (`p: Product`)
-- dataclass-style constructors (`Product(name, price)` maps onto the annotated fields)
+- inherited methods and `super().method()` for base classes defined in the same file
+- attributes: `self.x = ...` in one method flows to `self.x` read in another;
+  dataclass fields are the same attributes (`Product(name, price)` fills `Product.price`)
+- containers filled in place: `items.append(x)`, `d.update(...)`, `d[k] = x`
 - reads of module-level and enclosing-function variables
 - calls into libraries and builtins (shown as dashed "external" nodes)
 
@@ -54,7 +78,6 @@ missed. Rather than skipping such code silently, pyflow lists it in the
 
 | Reported as | Why it cannot be followed statically |
 |---|---|
-| Object attribute (`self.x`) | values stored on objects can be changed from anywhere |
 | `*args` / `**kwargs` | which argument lands where is only known at run time |
 | Decorator | a decorator can replace the function or change its signature |
 | Dynamic call (`getattr`, `exec`, `eval`, ...) | the target is computed at run time |
@@ -67,9 +90,10 @@ Other simplifications to keep in mind:
 - **One file at a time.** Imports from your other files are treated as external calls.
 - **Context-insensitive.** If `f` is called from two places, a value passed in
   at one call site appears to reach the result of both.
+- **One node per attribute, not per object.** Two `Cart` objects share the node `Cart.items`.
 - **No aliasing.** `b = a; b.append(x)` does not mark `a` as changed.
 - **Control flow is not data flow.** `if x > 0: y = 1` does not draw `x -> y`.
-- Inheritance is not followed when resolving methods.
+- Base classes from other files (or libraries) are not followed.
 
 ## Command line
 
@@ -99,8 +123,8 @@ view = subgraph(graph, hit["id"], depth=2, direction="both")
 cd pyflow
 pip install pytest
 python -m pytest                       # analyzer, search and CLI tests
-python scripts/build_site.py           # assemble the static site into _site/
-python -m http.server -d _site 8000    # preview at http://localhost:8000
+python scripts/build_site.py           # assemble the self-contained site into _site/
+python scripts/serve.py --no-open      # serve it at http://127.0.0.1:8000
 ```
 
 Project layout:
@@ -111,7 +135,7 @@ pyflow/
   tests/           pytest suite: one small snippet per language feature
   web/             index.html, app.js, style.css (Cytoscape.js + dagre layout)
   examples/        demo files in four styles: script, pure functions, classes, pipeline
-  scripts/         build_site.py for GitHub Pages
+  scripts/         vendor.py (pinned, hash-checked libraries), build_site.py, serve.py
   docs/            design notes
 ```
 

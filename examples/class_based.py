@@ -1,7 +1,8 @@
 """Class-based style: a shopping cart with a dataclass and methods.
 
-Try searching for: Cart, add, subtotal, discount_rate
-Note: values stored on ``self`` (self.items) are reported as unsupported.
+Try searching for: items, discount_rate, Product.price, checkout
+Values stored on ``self`` are tracked as attributes: follow ``price`` from
+``checkout`` through ``Cart.add`` into ``self.items`` and out of ``total``.
 """
 
 from dataclasses import dataclass

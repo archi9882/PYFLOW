@@ -96,3 +96,10 @@ def test_api_round_trip():
     sub = json.loads(api.neighborhood(hits[0]["id"], 2, "both", "data"))
     assert sub["center"] == "var:main:result"
     assert json.loads(api.whole_file())["nodes"]
+
+
+def test_api_highlight_classes():
+    spans = json.loads(api.highlight('def f(x):\n    """doc\n    more"""\n    return len(x)  # note\n'))
+    classes = {(line, cls) for line, _, _, cls in spans}
+    assert {(1, "kw"), (1, "def"), (2, "str"), (3, "str"), (4, "builtin"), (4, "com")} <= classes
+    assert json.loads(api.highlight("def broken(:\n")) != []  # partial result on syntax errors
