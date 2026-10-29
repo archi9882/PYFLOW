@@ -4,7 +4,7 @@
 
 把 Python 檔拖曳到網頁上，輸入變數或函式名稱，就能看到它的值從哪裡來、往哪裡去。
 
-**線上試用：** https://archi9882.github.io/Hackthon/
+**線上試用：** https://archi9882.github.io/SciML/
 
 - 完全在瀏覽器內執行，檔案不會上傳。
 - 不需安裝：分析器是純 Python，透過 [Pyodide](https://pyodide.org) 在瀏覽器中執行。

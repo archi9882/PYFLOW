@@ -5,7 +5,7 @@
 Drop a Python file into the page, type a variable or function name, and see
 where its values come from and where they go.
 
-**Live demo:** https://archi9882.github.io/Hackthon/
+**Live demo:** https://archi9882.github.io/SciML/
 
 - Runs entirely in your browser. Your file is never uploaded.
 - Nothing to install: the analyzer is plain Python, run by [Pyodide](https://pyodide.org).
