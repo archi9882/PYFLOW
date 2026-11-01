@@ -67,8 +67,15 @@ python scripts/build_site.py        # 只建置到 _site/
 ## 版本控制
 
 - `.venv/`、`_site/`、`.vendor-cache/` 不進版控。
-- 在自己的分支上改，不要直接推到 `claude/exciting-fermat-63e2ni`（PR #1 的分支）。
+- 每項工作從最新的 `main` 開新分支，不要直接推到 `main`。PR #1、#2 已併入 `main`，它們的分支不再使用。
+- 保持 git 圖是一條直線：分支壽命要短，一項工作做完就開 PR；工作期間不要把 `main` 合併進分支
+  （會多出菱形）。合併 PR 一律用 Squash and merge，每個 PR 在 `main` 上只留一個提交。
+  若 `main` 前進造成衝突，在 PR 頁面或用 rebase 解決，不要另外產生「合併 main」的提交。
+- 看歷史用 `git log --graph --oneline --decorate --first-parent main`，只顯示主線。
 - 推送前先確認使用者同意。
+- 要開 PR 時，主動寫好標題與說明，不必等使用者要求。用繁體中文，內容包含摘要、改動、測試、
+  尚未驗證的部分、已知限制與相關 PR，以可直接貼上 GitHub 的格式提供。這台電腦沒有 `gh`，
+  使用者在網頁上開 PR。
 
 ## 已知限制與後續
 
