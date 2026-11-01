@@ -4,7 +4,8 @@
 // All analysis runs in the browser; nothing is uploaded.
 "use strict";
 
-const PYODIDE_INDEX = new URL("vendor/pyodide/", location.href).href;
+// baseURI, not location.href: inside the VS Code webview a <base> tag points at the bundled files.
+const PYODIDE_INDEX = new URL("vendor/pyodide/", document.baseURI).href;
 const PY_FILES = ["__init__.py", "analyzer.py", "graph.py", "api.py", "cli.py"];
 const MAX_BYTES = 2_000_000;   // larger files work but the graph becomes unreadable
 const MIN_ZOOM = 0.6;          // never fit so far out that labels are unreadable
@@ -37,6 +38,7 @@ const STRINGS = {
     "fam.call": "Calls",
     "fam.data": "Data flow",
     "fam.ext": "External calls",
+    "fam.inside": "Inside functions",
     "legend.title": "Legend",
     "legend.up": "Upstream: where it comes from",
     "legend.center": "Selected",
@@ -46,10 +48,16 @@ const STRINGS = {
     "legend.attr": "Attribute (self.x, dataclass field)",
     "legend.ext": "External call (library, builtin)",
     "legend.grp": "Class box: its methods and attributes",
+    "legend.fnbox": "Function box: its parameters and locals",
     "legend.flag": "Has constructs pyflow cannot follow",
     "legend.call": "Call",
     "legend.data": "Data flow",
     "graph.hint": "Hover a node to trace its path. Click to re-center. Click a source line to jump to it.",
+    "refresh": "Refresh", "refresh.title": "Read the file again from the editor, including unsaved changes",
+    "details.foldAll": "Fold all", "details.unfoldAll": "Unfold all",
+    "panel.resize": "Drag to resize; double-click to reset",
+    "panel.hideLeft": "Hide left panel", "panel.showLeft": "Show left panel",
+    "panel.hideRight": "Hide right panel", "panel.showRight": "Show right panel",
     "notice.big": "{n} nodes. Lower the depth or hide external calls for a clearer view.",
     "notice.folded": "Large file: methods are folded into their class. Click a class to see its methods.",
     "label.methods": "{n} methods",
@@ -74,6 +82,10 @@ const STRINGS = {
     "file.big": "File is larger than 2 MB; skipped.",
     "d.name": "Name", "d.kind": "Kind", "d.scope": "Scope", "d.lines": "Lines",
     "d.in": "Comes from", "d.out": "Goes to", "d.flags": "Warnings",
+    "d.calledBy": "Called by", "d.args": "Arguments in", "d.returns": "Returns",
+    "d.resultTo": "Result goes to", "d.calls": "Calls", "d.locals": "Local variables",
+    "f.argTo": "{param} ← {src}", "f.returned": "return of {fn}()", "f.paramOf": "param {param} of {fn}",
+    "f.extArg": "into {fn}()", "f.retOf": "return value of {fn}",
     "kind.module": "module", "kind.function": "function", "kind.method": "method", "kind.class": "class",
     "kind.parameter": "parameter", "kind.variable": "variable", "kind.attribute": "attribute", "kind.external": "external",
     "edge.call": "calls", "edge.assign": "", "edge.arg": "arg", "edge.return": "return", "edge.result": "result",
@@ -102,6 +114,7 @@ const STRINGS = {
     "fam.call": "呼叫",
     "fam.data": "資料流",
     "fam.ext": "外部呼叫",
+    "fam.inside": "函式內部",
     "legend.title": "圖例",
     "legend.up": "上游：值從哪裡來",
     "legend.center": "目前選取",
@@ -111,10 +124,16 @@ const STRINGS = {
     "legend.attr": "屬性（self.x、dataclass 欄位）",
     "legend.ext": "外部呼叫（函式庫、內建函式）",
     "legend.grp": "類別框：其方法與屬性",
+    "legend.fnbox": "函式框：其參數與區域變數",
     "legend.flag": "含 pyflow 無法追蹤的寫法",
     "legend.call": "呼叫",
     "legend.data": "資料流",
     "graph.hint": "滑過節點可追蹤路徑；點擊改以它為中心；點原始碼某行可跳到對應節點。",
+    "refresh": "重新整理", "refresh.title": "從編輯器重新讀取檔案，包含尚未存檔的修改",
+    "details.foldAll": "全部摺疊", "details.unfoldAll": "全部展開",
+    "panel.resize": "拖曳調整寬度；雙擊恢復預設",
+    "panel.hideLeft": "收合左側面板", "panel.showLeft": "展開左側面板",
+    "panel.hideRight": "收合右側面板", "panel.showRight": "展開右側面板",
     "notice.big": "共 {n} 個節點。降低深度或隱藏外部呼叫，圖會更清楚。",
     "notice.folded": "檔案較大：方法已收合進所屬類別。點擊類別可查看其方法。",
     "label.methods": "{n} 個方法",
@@ -139,6 +158,10 @@ const STRINGS = {
     "file.big": "檔案超過 2 MB，已略過。",
     "d.name": "名稱", "d.kind": "種類", "d.scope": "作用域", "d.lines": "行號",
     "d.in": "來自", "d.out": "流向", "d.flags": "警告",
+    "d.calledBy": "被呼叫", "d.args": "傳入引數", "d.returns": "回傳",
+    "d.resultTo": "結果去向", "d.calls": "呼叫", "d.locals": "區域變數",
+    "f.argTo": "{param} ← {src}", "f.returned": "{fn}() 的回傳", "f.paramOf": "{fn} 的參數 {param}",
+    "f.extArg": "傳給 {fn}()", "f.retOf": "{fn} 的回傳值",
     "kind.module": "模組", "kind.function": "函式", "kind.method": "方法", "kind.class": "類別",
     "kind.parameter": "參數", "kind.variable": "變數", "kind.attribute": "屬性", "kind.external": "外部",
     "edge.call": "呼叫", "edge.assign": "", "edge.arg": "引數", "edge.return": "回傳", "edge.result": "結果",
@@ -170,7 +193,140 @@ function applyLanguage() {
   document.querySelectorAll("[data-i18n-placeholder]").forEach((el) => {
     el.placeholder = t(el.dataset.i18nPlaceholder);
   });
+  document.querySelectorAll("[data-i18n-title]").forEach((el) => { el.title = t(el.dataset.i18nTitle); });
   $("#lang-toggle").textContent = lang === "en" ? "中文" : "English";
+  updatePanelToggles();
+}
+
+// ---------------------------------------------------------------- collapsible panels
+
+// Each side: the .layout class that hides it, its edge button, and the arrows to show.
+const PANELS = {
+  left: { cls: "hide-left", btn: "#toggle-left", key: "pyflow.hideLeft", hide: "‹", show: "›", label: "Left" },
+  right: { cls: "hide-right", btn: "#toggle-right", key: "pyflow.hideRight", hide: "›", show: "‹", label: "Right" },
+};
+
+// Arrow points the way the panel will move; label and aria-expanded follow the language and state.
+function updatePanelToggles() {
+  for (const p of Object.values(PANELS)) {
+    const hidden = $(".layout").classList.contains(p.cls);
+    const btn = $(p.btn);
+    btn.textContent = hidden ? p.show : p.hide;
+    btn.title = t(`panel.${hidden ? "show" : "hide"}${p.label}`);
+    btn.setAttribute("aria-label", btn.title);
+    btn.setAttribute("aria-expanded", String(!hidden));
+  }
+}
+
+function setPanelHidden(side, hidden) {
+  const p = PANELS[side];
+  $(".layout").classList.toggle(p.cls, hidden);
+  try { localStorage.setItem(p.key, hidden ? "1" : "0"); } catch (_) { /* ignore */ }
+  updatePanelToggles();
+  refitGraph();
+}
+
+// The graph area just changed width; refit once the new layout is in place.
+function refitGraph() {
+  requestAnimationFrame(() => {
+    if (!cy || !cy.nodes().length) return;
+    cy.resize();
+    fitView(state.center, false);
+  });
+}
+
+// ---------------------------------------------------------------- resizable panels
+
+// Dragged widths live in --left-w / --right-w on .layout (see style.css).
+const SPLITS = {
+  left: { el: "#split-left", prop: "--left-w", key: "pyflow.leftWidth", min: 200, def: 284 },
+  right: { el: "#split-right", prop: "--right-w", key: "pyflow.rightWidth", min: 260, def: 380 },
+};
+const MIN_GRAPH = 320; // px the graph keeps however wide the panels get
+
+function panelWidth(side) {
+  const v = parseFloat($(".layout").style.getPropertyValue(SPLITS[side].prop));
+  return Number.isFinite(v) ? v : SPLITS[side].def;
+}
+
+// Clamp so the panel keeps its minimum and the graph keeps MIN_GRAPH beside both panels.
+function setPanelWidth(side, px, save) {
+  const s = SPLITS[side];
+  const layout = $(".layout");
+  const other = side === "left" ? "right" : "left";
+  const otherWidth = layout.classList.contains(PANELS[other].cls) ? 0 : panelWidth(other);
+  const room = layout.clientWidth - MIN_GRAPH - 12 - otherWidth; // 12 = both splitters
+  const w = Math.round(Math.max(s.min, Math.min(px, room)));
+  layout.style.setProperty(s.prop, `${w}px`);
+  $(s.el).setAttribute("aria-valuenow", String(w));
+  if (save) try { localStorage.setItem(s.key, String(w)); } catch (_) { /* ignore */ }
+}
+
+function bindSplitter(side) {
+  const s = SPLITS[side];
+  const el = $(s.el);
+  const layout = $(".layout");
+  // Panel width for a pointer at x: distance from the layout's outer edge on that side.
+  const widthAt = (x) => {
+    const r = layout.getBoundingClientRect();
+    return side === "left" ? x - r.left : r.right - x;
+  };
+  let frame = 0;
+  el.addEventListener("pointerdown", (ev) => {
+    ev.preventDefault();
+    el.setPointerCapture(ev.pointerId);
+    el.classList.add("dragging");
+    document.body.classList.add("resizing");
+  });
+  el.addEventListener("pointermove", (ev) => {
+    if (!el.hasPointerCapture(ev.pointerId)) return;
+    setPanelWidth(side, widthAt(ev.clientX), false);
+    // Resize the canvas at most once per frame while dragging; refit when released.
+    if (!frame) frame = requestAnimationFrame(() => { frame = 0; if (cy) cy.resize(); });
+  });
+  const end = () => {
+    if (!el.classList.contains("dragging")) return; // pointerup and lostpointercapture both land here
+    el.classList.remove("dragging");
+    document.body.classList.remove("resizing");
+    setPanelWidth(side, panelWidth(side), true);
+    refitGraph();
+  };
+  el.addEventListener("pointerup", end);
+  el.addEventListener("lostpointercapture", end);
+  el.addEventListener("dblclick", () => {
+    layout.style.removeProperty(s.prop);
+    try { localStorage.removeItem(s.key); } catch (_) { /* ignore */ }
+    refitGraph();
+  });
+  // Keyboard: arrows move the splitter (Shift for bigger steps).
+  el.addEventListener("keydown", (ev) => {
+    const dir = ev.key === "ArrowLeft" ? -1 : ev.key === "ArrowRight" ? 1 : 0;
+    if (!dir) return;
+    ev.preventDefault();
+    const step = (ev.shiftKey ? 48 : 16) * dir;
+    setPanelWidth(side, panelWidth(side) + (side === "left" ? step : -step), true);
+    refitGraph();
+  });
+}
+
+function restoreWidths() {
+  for (const [side, s] of Object.entries(SPLITS)) {
+    let saved = NaN;
+    try { saved = parseFloat(localStorage.getItem(s.key)); } catch (_) { /* ignore */ }
+    if (Number.isFinite(saved)) setPanelWidth(side, saved, false);
+    bindSplitter(side);
+  }
+}
+
+// Restore the last choice; storage can be blocked (private mode, webview), so default to shown.
+function restorePanels() {
+  for (const [side, p] of Object.entries(PANELS)) {
+    let hidden = false;
+    try { hidden = localStorage.getItem(p.key) === "1"; } catch (_) { /* ignore */ }
+    $(".layout").classList.toggle(p.cls, hidden);
+    $(p.btn).addEventListener("click", () => setPanelHidden(side, !$(".layout").classList.contains(p.cls)));
+  }
+  updatePanelToggles();
 }
 
 // ---------------------------------------------------------------- state
@@ -308,6 +464,34 @@ async function loadExample(name) {
   loadSource(text, name);
 }
 
+// Inside the VS Code extension (vscode/extension.js) the editor sends the .py file being
+// viewed; in a normal browser VSCODE is null and none of this runs.
+const VSCODE = typeof acquireVsCodeApi === "function" ? acquireVsCodeApi() : null;
+
+function listenToEditor() {
+  if (!VSCODE) return;
+  window.addEventListener("message", (ev) => {
+    const msg = ev.data;
+    if (!msg || msg.type !== "file") return;
+    if (msg.text.length > MAX_BYTES) { $("#file-info").textContent = t("file.big"); return; }
+    // Re-sent after a save: keep looking at the same node if it still exists.
+    const keep = msg.path === state.editorPath ? state.center : null;
+    state.editorPath = msg.path;
+    $("#example-select").value = "";
+    loadSource(msg.text, msg.name);
+    if (keep && state.nodesById.has(keep)) {
+      $("#search").value = qualified(state.nodesById.get(keep));
+      focusNode(keep);
+    }
+  });
+  // Ask for the current file only once the listener is in place, so nothing is lost.
+  VSCODE.postMessage({ type: "ready" });
+  // Manual re-read, for when an automatic update (switch or save) did not arrive.
+  const refresh = $("#refresh-btn");
+  refresh.hidden = false;
+  refresh.addEventListener("click", () => VSCODE.postMessage({ type: "refresh" }));
+}
+
 async function loadDefaultExample() {
   const options = [...$("#example-select").options];
   const preferred = options.find((o) => o.value === "class_based.py") || options.find((o) => o.value);
@@ -411,9 +595,13 @@ function showOverview() {
 // Redraw the current view with the current controls.
 function refresh() {
   if (!state.api || !state.graph || state.graph.error) return;
-  let sub = state.center
-    ? JSON.parse(state.api.neighborhood(state.center, Number($("#depth").value), $("#direction").value, families()))
-    : JSON.parse(state.api.whole_file());
+  // A function or method in the middle is drawn from the inside (params, locals, one step
+  // around) unless "Inside functions" is off; depth and direction do not apply to that view.
+  const kind = state.center && state.nodesById.get(state.center)?.kind;
+  const inside = $("#fn-inside").checked && (kind === "function" || kind === "method");
+  let sub = !state.center ? JSON.parse(state.api.whole_file())
+    : inside ? JSON.parse(state.api.inside(state.center, families()))
+    : JSON.parse(state.api.neighborhood(state.center, Number($("#depth").value), $("#direction").value, families()));
   if (!state.center && sub.nodes.length > FOLD_OVERVIEW) sub = foldMethods(sub);
   drawGraph(sub);
   markViewLines(sub);
@@ -518,7 +706,7 @@ function nodeLabel(n, grouped) {
     case "method": return grouped ? `${n.name}()` : `${n.scope}.${n.name}()`;
     case "attribute": return grouped ? `.${n.name}` : `${n.scope}.${n.name}`;
     case "variable":
-    case "parameter": return `${n.name}\n${scopeLabel(n.scope)}`;
+    case "parameter": return grouped ? n.name : `${n.name}\n${scopeLabel(n.scope)}`; // a box already names the scope
     default: return n.name;
   }
 }
@@ -531,19 +719,24 @@ function groupOf(n) {
 }
 
 function buildElements(sub) {
+  // Function box (inside view only): level 0 is the function and its own scope.
+  // Its members stay out of class boxes, so a method's box is not nested in its class's.
+  const fnBox = sub.scope ? `grp:fn:${sub.scope}` : null;
+  const inBox = (n) => fnBox !== null && n.level === 0;
   // Only draw a class box when at least two of its members are visible.
   const members = new Map();
   sub.nodes.forEach((n) => {
-    const g = groupOf(n);
+    const g = inBox(n) ? null : groupOf(n);
     if (g) members.set(g, (members.get(g) || 0) + 1);
   });
   const groups = [...members].filter(([, count]) => count >= 2).map(([g]) => g);
   const groupSet = new Set(groups);
   return [
+    ...(fnBox ? [{ data: { id: fnBox, label: `${scopeLabel(sub.scope)}()`, kind: "group" } }] : []),
     ...groups.map((g) => ({ data: { id: `grp:${g}`, label: g, kind: "group" } })),
     ...sub.nodes.map((n) => {
-      const g = groupOf(n);
-      const parent = g && groupSet.has(g) ? `grp:${g}` : undefined;
+      const g = inBox(n) ? null : groupOf(n);
+      const parent = inBox(n) ? fnBox : g && groupSet.has(g) ? `grp:${g}` : undefined;
       return { data: {
         id: n.id, parent, label: nodeLabel(n, Boolean(parent)), fullLabel: nodeLabel(n, false),
         kind: n.kind, level: n.level,
@@ -772,22 +965,16 @@ function renderDetails(node) {
   if (!node) {
     box.textContent = t("details.none");
     box.classList.add("muted");
+    updateFoldAll();
     highlightLines([]);
     return;
   }
   box.classList.remove("muted");
   const edges = state.graph.edges;
-  const label = (id) => {
-    const n = state.nodesById.get(id);
-    return n ? (n.kind === "attribute" ? `${n.scope}.${n.name}` : n.name) : id;
-  };
-  const names = (ids) => [...new Set(ids)].map(label).join(", ") || "-";
   const rows = [
     ["d.name", node.name],
     ["d.kind", t(`kind.${node.kind}`)],
     ["d.scope", node.scope ? scopeLabel(node.scope) : "-"],
-    ["d.in", names(edges.filter((e) => e.target === node.id).map((e) => e.source))],
-    ["d.out", names(edges.filter((e) => e.source === node.id).map((e) => e.target))],
   ];
   if (node.flags.length) rows.push(["d.flags", node.flags.map((f) => t(`u.${f}`)).join(", ")]);
   const dl = document.createElement("dl");
@@ -798,11 +985,17 @@ function renderDetails(node) {
     dd.textContent = value;
     dl.append(dt, dd);
   }
+  // What flows in and out, worded by edge kind, so "who passes what" reads directly.
+  const label = (n) => n.kind === "module" ? scopeLabel(n.name) : qualified(n);
+  for (const [key, items] of flowSections(node, edges, { nodesById: state.nodesById, t, label })) {
+    if (!items.length) continue;
+    const dd = document.createElement("dd");
+    items.forEach((it) => dd.append(flowItem(it)));
+    dl.append(foldLabel(key, items.length, dd), dd);
+  }
   // Line numbers: where the name is defined or assigned. Clicking scrolls the source.
   const lines = node.lines.length ? node.lines
     : [...new Set(edges.filter((e) => e.source === node.id || e.target === node.id).flatMap((e) => e.lines))].sort((a, b) => a - b);
-  const dt = document.createElement("dt");
-  dt.textContent = t("d.lines");
   const dd = document.createElement("dd");
   lines.forEach((ln) => {
     const a = document.createElement("span");
@@ -812,9 +1005,92 @@ function renderDetails(node) {
     dd.append(a);
   });
   if (!lines.length) dd.textContent = "-";
-  dl.append(dt, dd);
+  dl.append(foldLabel("d.lines", lines.length, dd), dd);
   box.append(dl);
+  updateFoldAll();
   highlightLines(lines);
+}
+
+// ---------------------------------------------------------------- foldable details
+
+// Every section that can fold; "Fold all" folds these even if this node lacks some,
+// so the choice still holds after selecting another node.
+const FOLD_KEYS = ["d.calledBy", "d.args", "d.returns", "d.resultTo", "d.calls", "d.locals", "d.in", "d.out", "d.lines"];
+const foldedSections = (() => {
+  try { return new Set(JSON.parse(localStorage.getItem("pyflow.folded") || "[]")); } catch (_) { return new Set(); }
+})();
+
+function saveFolded() {
+  try { localStorage.setItem("pyflow.folded", JSON.stringify([...foldedSections])); } catch (_) { /* ignore */ }
+}
+
+// Section label "▾ Calls (3)"; clicking it (or Enter / Space) folds the dd that follows.
+function foldLabel(key, count, dd) {
+  const dt = document.createElement("dt");
+  dt.className = "fold";
+  dt.dataset.key = key;
+  dt.tabIndex = 0;
+  dt.setAttribute("role", "button");
+  const apply = () => {
+    const folded = foldedSections.has(key);
+    dd.hidden = folded;
+    dt.setAttribute("aria-expanded", String(!folded));
+    dt.textContent = `${folded ? "▸" : "▾"} ${t(key)} `;
+    const c = document.createElement("span");
+    c.className = "count";
+    c.textContent = `(${count})`;
+    dt.append(c);
+  };
+  const toggle = () => {
+    if (foldedSections.has(key)) foldedSections.delete(key); else foldedSections.add(key);
+    saveFolded();
+    apply();
+    updateFoldAll();
+  };
+  dt.addEventListener("click", toggle);
+  dt.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); toggle(); }
+  });
+  apply();
+  return dt;
+}
+
+// The button says "Unfold all" only when every section on screen is folded.
+function updateFoldAll() {
+  const keys = [...document.querySelectorAll("#details dt.fold")].map((dt) => dt.dataset.key);
+  const btn = $("#details-fold");
+  btn.hidden = !keys.length;
+  btn.textContent = t(keys.length && keys.every((k) => foldedSections.has(k)) ? "details.unfoldAll" : "details.foldAll");
+}
+
+function toggleFoldAll() {
+  const keys = [...document.querySelectorAll("#details dt.fold")].map((dt) => dt.dataset.key);
+  const unfold = keys.length > 0 && keys.every((k) => foldedSections.has(k));
+  if (unfold) foldedSections.clear(); else FOLD_KEYS.forEach((k) => foldedSections.add(k));
+  saveFolded();
+  renderDetails(state.nodesById.get(state.selected) || null);
+}
+
+// One clickable flow row: the name re-centers the graph, the numbers jump to the source.
+function flowItem(it) {
+  const row = document.createElement("div");
+  row.className = "flow-item";
+  const link = document.createElement("span");
+  link.className = "flow-link";
+  link.textContent = it.text;
+  link.addEventListener("click", () => {
+    $("#search").value = qualified(state.nodesById.get(it.id) || { name: it.id });
+    focusNode(it.id);
+  });
+  row.append(link);
+  it.lines.forEach((ln) => {
+    const a = document.createElement("span");
+    a.className = "line-link";
+    a.textContent = ln;
+    a.addEventListener("click", () => highlightLines(it.lines, ln));
+    row.append(" ", a);
+  });
+  return row;
 }
 
 function renderUnsupported() {
@@ -923,6 +1199,11 @@ function pickLine(ln) {
 // ---------------------------------------------------------------- events
 
 function bindEvents() {
+  restorePanels();
+  restoreWidths();
+  $("#details-fold").addEventListener("click", toggleFoldAll);
+  listenToEditor();
+
   // Drag and drop anywhere on the page.
   let dragDepth = 0;
   window.addEventListener("dragenter", (e) => { e.preventDefault(); dragDepth++; $("#drop-overlay").hidden = false; });
@@ -969,7 +1250,7 @@ function bindEvents() {
 
   // View controls redraw the current center.
   $("#depth").addEventListener("input", (e) => { $("#depth-value").textContent = e.target.value; refresh(); });
-  ["#direction", "#fam-call", "#fam-data", "#fam-ext"].forEach((sel) => $(sel).addEventListener("change", refresh));
+  ["#direction", "#fam-call", "#fam-data", "#fam-ext", "#fn-inside"].forEach((sel) => $(sel).addEventListener("change", refresh));
 
   $("#lang-toggle").addEventListener("click", () => {
     lang = lang === "en" ? "zh-TW" : "en";

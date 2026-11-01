@@ -133,8 +133,36 @@ button, input, select { font: inherit; color: inherit; }
 /* ---- Three-column layout ---- */
 .layout {
   flex: 1; min-height: 0;
-  display: grid; grid-template-columns: 284px minmax(0, 1fr) 380px;
+  /* Panel | splitter | graph | splitter | panel. Dragging sets --left-w / --right-w inline;
+     collapsing sets the column (and its splitter) to 0 without forgetting the dragged width. */
+  --left-col: var(--left-w, 284px); --right-col: var(--right-w, 380px);
+  --left-split: 6px; --right-split: 6px;
+  display: grid;
+  grid-template-columns: var(--left-col) var(--left-split) minmax(0, 1fr) var(--right-split) var(--right-col);
 }
+.layout.hide-left { --left-col: 0px; --left-split: 0px; }
+.layout.hide-right { --right-col: 0px; --right-split: 0px; }
+.layout.hide-left .sidebar, .layout.hide-right .inspector,
+.layout.hide-left .split-left, .layout.hide-right .split-right { display: none; }
+.sidebar { grid-column: 1; }
+.split-left { grid-column: 2; }
+.graph-area { grid-column: 3; }
+.split-right { grid-column: 4; }
+.inspector { grid-column: 5; }
+.splitter { cursor: col-resize; background: transparent; touch-action: none; }
+.splitter:hover, .splitter:focus-visible, .splitter.dragging { background: var(--accent); opacity: .35; outline: none; }
+/* While dragging, keep the cursor and stop text selection everywhere. */
+body.resizing { cursor: col-resize; user-select: none; }
+/* Edge handles: vertically centred so they never cover the notice (top) or hint (bottom). */
+.edge-toggle {
+  position: absolute; top: 50%; transform: translateY(-50%); z-index: 5;
+  width: 18px; height: 52px; padding: 0; cursor: pointer;
+  background: var(--surface); color: var(--muted); border: 1px solid var(--border);
+  font-size: 15px; line-height: 1;
+}
+.edge-toggle:hover, .edge-toggle:focus-visible { color: var(--accent); border-color: var(--accent); }
+.edge-left { left: 0; border-left: 0; border-radius: 0 6px 6px 0; }
+.edge-right { right: 0; border-right: 0; border-radius: 6px 0 0 6px; }
 .sidebar, .inspector { overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .sidebar { border-right: 1px solid var(--border); }
 .inspector { border-left: 1px solid var(--border); }
@@ -231,9 +259,17 @@ kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--border)
 
 /* ---- Inspector ---- */
 .details dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 10px; margin: 0; }
-.details dt { color: var(--muted); }
-.details dd { margin: 0; font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; }
+/* Fixed columns, so a folded section (its dd hidden) does not pull the next label sideways. */
+.details dt { color: var(--muted); grid-column: 1; }
+.details dd { margin: 0; font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; grid-column: 2; }
+.details dt.fold { cursor: pointer; user-select: none; white-space: nowrap; }
+.details dt.fold:hover, .details dt.fold:focus-visible { color: var(--accent); outline: none; }
+.details dt.fold .count { font-family: var(--mono); font-size: 12px; }
+.panel-title .fold-all { margin: 0 0 0 auto; font-size: 11px; text-transform: none; letter-spacing: 0; font-weight: 400; }
 .details .line-link { cursor: pointer; color: var(--accent); margin-right: 6px; }
+.details .flow-item + .flow-item { margin-top: 2px; }
+.details .flow-link { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+.details .flow-link:hover { color: var(--accent); }
 .unsupported { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; max-height: 180px; overflow-y: auto; }
 .unsupported li { font-size: 12px; padding: 4px 6px; border-left: 3px solid var(--flag); background: var(--sunken); cursor: pointer; overflow-wrap: anywhere; }
 .unsupported li.none { border-left-color: var(--border); cursor: default; }
@@ -268,6 +304,10 @@ kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--border)
     padding-left: max(16px, env(safe-area-inset-left, 0px));
     padding-right: max(16px, env(safe-area-inset-right, 0px));
   }
+  /* Stacked layout has no side columns, so collapsing does not apply here. */
+  .edge-toggle, .splitter { display: none; }
+  .layout.hide-left .sidebar { display: contents; }
+  .layout.hide-right .inspector { display: flex; }
   .sidebar { display: contents; }
   .inspector { border: 0; overflow: visible; padding: 0; order: 5; }
   .p-input { order: 1; }

@@ -28,13 +28,15 @@
     </div>
     <div class="topbar-right">
       <span id="status" class="status" role="status" aria-live="polite"></span>
+      <!-- VS Code extension only: re-read the file from the editor -->
+      <button id="refresh-btn" class="ghost" type="button" hidden data-i18n="refresh" data-i18n-title="refresh.title">Refresh</button>
       <button id="lang-toggle" class="ghost" type="button" aria-label="Switch language">中文</button>
       <a class="ghost" href="https://github.com/archi9882/SciML/tree/main/pyflow" target="_blank" rel="noopener">GitHub</a>
     </div>
   </header>
 
   <main class="layout">
-    <aside class="sidebar">
+    <aside id="sidebar" class="sidebar">
       <!-- 1. Input -->
       <section class="panel p-input">
         <label id="drop-zone" class="drop-zone" for="file-input" tabindex="0">
@@ -81,6 +83,7 @@
           <label><input id="fam-call" type="checkbox" checked> <span data-i18n="fam.call">Calls</span></label>
           <label><input id="fam-data" type="checkbox" checked> <span data-i18n="fam.data">Data flow</span></label>
           <label><input id="fam-ext" type="checkbox" checked> <span data-i18n="fam.ext">External calls</span></label>
+          <label><input id="fn-inside" type="checkbox" checked> <span data-i18n="fam.inside">Inside functions</span></label>
         </fieldset>
       </section>
 
@@ -96,6 +99,7 @@
           <li><i class="shape shape-attr"></i><span data-i18n="legend.attr">Attribute (self.x, dataclass field)</span></li>
           <li><i class="shape shape-ext"></i><span data-i18n="legend.ext">External call (library, builtin)</span></li>
           <li><i class="shape shape-grp"></i><span data-i18n="legend.grp">Class box: its methods and attributes</span></li>
+          <li><i class="shape shape-grp"></i><span data-i18n="legend.fnbox">Function box: its parameters and locals</span></li>
           <li><i class="shape shape-flag"></i><span data-i18n="legend.flag">Has constructs pyflow cannot follow</span></li>
           <li><i class="line line-call"></i><span data-i18n="legend.call">Call</span></li>
           <li><i class="line line-data"></i><span data-i18n="legend.data">Data flow</span></li>
@@ -103,17 +107,26 @@
       </section>
     </aside>
 
+    <!-- Drag to resize the panel beside it (wide screens only); double-click resets -->
+    <div id="split-left" class="splitter split-left" role="separator" aria-orientation="vertical" aria-controls="sidebar" tabindex="0" data-i18n-title="panel.resize"></div>
+
     <section class="graph-area" aria-label="Flow graph">
       <div id="graph" class="graph"></div>
       <div id="graph-empty" class="graph-empty"><p data-i18n="empty.loading">Loading the Python runtime...</p></div>
       <div id="graph-notice" class="graph-notice" hidden></div>
       <div id="tooltip" class="tooltip" hidden></div>
+      <!-- Collapse handles on the graph's edges, next to the panel each one hides (wide screens only) -->
+      <button id="toggle-left" class="edge-toggle edge-left" type="button" aria-controls="sidebar" aria-expanded="true"></button>
+      <button id="toggle-right" class="edge-toggle edge-right" type="button" aria-controls="inspector" aria-expanded="true"></button>
       <div class="graph-hint" data-i18n="graph.hint">Hover a node to trace its path. Click to re-center. Click a source line to jump to it.</div>
     </section>
 
-    <aside class="inspector">
+    <div id="split-right" class="splitter split-right" role="separator" aria-orientation="vertical" aria-controls="inspector" tabindex="0" data-i18n-title="panel.resize"></div>
+
+    <aside id="inspector" class="inspector">
       <section class="panel">
-        <h2 class="panel-title" data-i18n="details.title">Details</h2>
+        <h2 class="panel-title"><span data-i18n="details.title">Details</span>
+          <button id="details-fold" class="link fold-all" type="button"></button></h2>
         <div id="details" class="details muted" data-i18n="details.none">Select a node.</div>
       </section>
       <section class="panel">
@@ -130,6 +143,7 @@
 
   <div id="drop-overlay" class="drop-overlay" hidden><span data-i18n="drop.overlay">Drop to analyze</span></div>
 
+  <script src="flow.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

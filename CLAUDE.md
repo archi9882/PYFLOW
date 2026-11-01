@@ -3,6 +3,7 @@
 把任意 .py 檔拖進網頁，搜尋變數或函式，以由左至右的階層圖顯示上游與下游。
 分析在瀏覽器內以 Pyodide 執行，檔案不上傳。設計決策與理由見
 `docs/superpowers/specs/2026-10-28-pyflow-design.md`，功能與限制見 `README.zh-TW.md`，不在此重複。
+最近一輪的進度、尚未驗證的部分與待決事項見 `docs/handoff.md`，接續工作前先讀。
 
 ## 專案目標
 
@@ -29,7 +30,7 @@
 ## 指令（在 `pyflow/` 底下執行）
 
 ```bash
-python -m pytest                    # 46 個測試，改動後不應減少
+python -m pytest                    # 61 個測試，改動後不應減少（test_flow.py 需要 Node，沒有就略過）
 python scripts/serve.py             # 建置、下載函式庫（只第一次）、啟動並開啟瀏覽器
 python scripts/serve.py --no-open   # 同上，不開瀏覽器
 python scripts/build_site.py        # 只建置到 _site/
@@ -40,9 +41,11 @@ python scripts/build_site.py        # 只建置到 _site/
 ## 結構
 
 - `core/pyflow/analyzer.py`：`ast` 兩階段分析（先建作用域，再走訪敘述產生邊）
-- `core/pyflow/graph.py`：搜尋、上下游鄰域、整檔呼叫圖
+- `core/pyflow/graph.py`：搜尋、上下游鄰域、整檔呼叫圖、函式內部視圖（`function_inside`：參數與區域變數畫成框，只往外一步）
 - `core/pyflow/api.py`：網頁透過 Pyodide 呼叫的 JSON 介面
 - `web/`：index.html、app.js、style.css；`scripts/vendor.py` 下載並驗證函式庫雜湊
+- `vscode/`：VS Code 擴充功能（extension.js、package.json）；`media/` 由 `build_site.py vscode/media` 產生，不進版控
+- `web/flow.js`：詳細資料面板的分類（引數、回傳、結果去向），不碰 DOM，由 `tests/test_flow.py` 透過 Node 測試
 - `tests/`：每種語法一個小片段；`examples/`：四種風格的示範檔
 
 ## 改動時的驗證

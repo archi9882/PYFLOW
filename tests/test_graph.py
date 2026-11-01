@@ -5,7 +5,7 @@ import textwrap
 
 import pytest
 
-from pyflow import analyze, api, overview, search, subgraph
+from pyflow import analyze, api, function_inside, overview, search, subgraph
 
 SOURCE = textwrap.dedent("""
     def load(path):
@@ -80,6 +80,62 @@ def test_subgraph_family_filter(g):
 def test_subgraph_unknown_center(g):
     with pytest.raises(KeyError):
         subgraph(g, "var:nope:x")
+
+
+def test_function_inside_shows_params_locals_and_one_step_around(g):
+    sub = function_inside(g, "fn:clean")
+    levels = {n["id"]: n["level"] for n in sub["nodes"]}
+    assert sub["center"] == "fn:clean" and sub["scope"] == "clean"
+    # Inside the box: the function, its parameter and its local.
+    assert levels["fn:clean"] == 0 and levels["var:clean:data"] == 0 and levels["var:clean:cleaned"] == 0
+    # One step outside: who calls it and passes what in (left), where the result goes (right).
+    assert levels["fn:main"] == -1
+    assert levels["var:main:data"] == -1
+    assert levels["var:main:result"] == 1
+    assert ("var:main:data", "var:clean:data", "arg") in {(e["source"], e["target"], e["kind"]) for e in sub["edges"]}
+
+
+def test_function_inside_does_not_expand_past_one_step(g):
+    ids = {n["id"] for n in function_inside(g, "fn:clean")["nodes"]}
+    # load() feeds main.data, two steps away; print() reads main.result, also two steps.
+    assert "fn:load" not in ids and "ext:print" not in ids
+
+
+def test_function_inside_lists_locals_with_no_edges():
+    g = analyze(textwrap.dedent("""
+        def run(text):
+            y = 100
+            return text
+    """))
+    ids = {n["id"] for n in function_inside(g, "fn:run")["nodes"]}
+    assert "var:run:y" in ids
+
+
+def test_function_inside_leaves_out_nested_function_locals():
+    g = analyze(textwrap.dedent("""
+        def outer():
+            x = 1
+            def inner():
+                z = 2
+            return x
+    """))
+    ids = {n["id"] for n in function_inside(g, "fn:outer")["nodes"]}
+    assert "var:outer:x" in ids and "var:outer.inner:z" not in ids
+
+
+def test_function_inside_family_filter_keeps_the_box(g):
+    sub = function_inside(g, "fn:clean", families=("call",))
+    ids = {n["id"] for n in sub["nodes"]}
+    assert {e["kind"] for e in sub["edges"]} == {"call"}
+    assert "var:clean:cleaned" in ids  # locals stay listed even with data flow hidden
+    assert "var:main:data" not in ids
+
+
+def test_function_inside_needs_a_function(g):
+    with pytest.raises(KeyError):
+        function_inside(g, "fn:nope")
+    with pytest.raises(ValueError):
+        function_inside(g, "var:main:data")
 
 
 def test_overview_is_the_file_call_graph(g):

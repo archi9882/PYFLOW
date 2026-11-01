@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 
 from .analyzer import analyze
-from .graph import overview, search, subgraph
+from .graph import function_inside, overview, search, subgraph
 
 _state: dict = {"graph": None}
 
@@ -31,6 +31,12 @@ def neighborhood(center: str, depth: int, direction: str, families: str) -> str:
     """Subgraph around ``center``; ``families`` is a comma list such as "call,data"."""
     fams = tuple(f for f in families.split(",") if f)
     return json.dumps(subgraph(_state["graph"], center, int(depth), direction, fams))
+
+
+def inside(center: str, families: str) -> str:
+    """A function with its parameters and locals, drawn as a box; see ``graph.function_inside``."""
+    fams = tuple(f for f in families.split(",") if f)
+    return json.dumps(function_inside(_state["graph"], center, fams))
 
 
 def whole_file() -> str:

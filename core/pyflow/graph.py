@@ -118,6 +118,52 @@ def subgraph(graph: dict, center: str, depth: int = 2, direction: str = "both",
     }
 
 
+def function_inside(graph: dict, center: str, families=("call", "data")) -> dict:
+    """A function drawn from the inside: its parameters, locals and their flow, plus one step around.
+
+    Level 0 holds the function and everything defined directly in its scope
+    (``scope`` in the result names it, so the page can draw a box). Arguments
+    landing on its parameters reach parameters, not the function node, so the
+    ordinary neighborhood cannot show them; here they do. Nodes one edge away
+    are included with level -1 (comes in) or +1 (goes out) and are not expanded
+    further, so callers of callers never appear. Locals with no edges at all
+    (``y = 100``) are still listed. Nested functions keep their own scope and
+    are left out.
+    """
+    by_id = {n["id"]: n for n in graph["nodes"]}
+    if center not in by_id:
+        raise KeyError(center)
+    if by_id[center]["kind"] not in ("function", "method"):
+        raise ValueError(f"{center} is not a function or method")
+    scope = center.split(":", 1)[1]  # fn:Cart.add -> Cart.add, the scope its locals live in
+    inside = {center} | {n["id"] for n in graph["nodes"]
+                         if n["scope"] == scope and n["kind"] in ("parameter", "variable")}
+    allowed = _edge_kinds(families)
+
+    levels = {nid: 0 for nid in inside}
+    edges = []
+    for e in graph["edges"]:
+        if e["kind"] not in allowed:
+            continue
+        src_in, dst_in = e["source"] in inside, e["target"] in inside
+        if not (src_in or dst_in):
+            continue
+        edges.append(e)
+        # The far end of a boundary edge sits on the side its value travels from or to;
+        # a node that both feeds in and receives keeps the upstream side.
+        if not src_in:
+            levels[e["source"]] = -1
+        if not dst_in:
+            levels.setdefault(e["target"], 1)
+
+    return {
+        "center": center,
+        "scope": scope,
+        "nodes": [dict(by_id[nid], level=lvl) for nid, lvl in levels.items()],
+        "edges": edges,
+    }
+
+
 def overview(graph: dict) -> dict:
     """Whole-file call graph: every function, method and class plus the calls between them.
 
