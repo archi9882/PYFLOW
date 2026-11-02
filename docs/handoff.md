@@ -1,6 +1,6 @@
 # pyflow 交接：VS Code 擴充功能與介面微調
 
-最後更新：2026-11-02　分支：`pyflow-vscode-extension`（從 `claude/exciting-fermat-63e2ni` 開出）
+最後更新：2026-11-03　分支：已併入 main（PR #2），原分支 `pyflow-vscode-extension` 已刪除
 
 給下一個 session：先讀 `pyflow/CLAUDE.md`，再讀這份。這份只記錄這一輪的進度、
 尚未驗證的部分與待決事項；設計理由見 `docs/superpowers/specs/2026-10-28-pyflow-design.md`。
@@ -68,7 +68,7 @@
 - 打包成 `.vsix` 安裝到一般 VS Code（`npx @vscode/vsce package`），不再需要開發主機。
 - 邊打字邊更新（目前只在切換、存檔、按重新整理時更新）。
 - 函式內部視圖下停用深度滑桿。
-- 這個分支要不要開 PR、併到哪裡，尚未討論。
+- （已完成）分支已透過 PR #2 併入 main。
 
 ## 使用者這一輪做的決定（不要重新討論）
 
