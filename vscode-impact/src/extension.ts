@@ -7,7 +7,7 @@ import {
   decorationPlan, displayName, explain, graphPayload, Impact, langOf, summaryText, tr, treeModel, TreeGroup, TreeItem,
 } from "./core";
 import { graphHtml } from "./html";
-import { runAnalyzer } from "./runner";
+import { probePython, runAnalyzer } from "./runner";
 
 interface Result { uri: string; version: number; impact: Impact }
 
@@ -165,7 +165,11 @@ class Controller {
         if (env?.path) return env.path as string;
       }
     } catch { /* the Python extension is optional; fall through */ }
-    return process.platform === "win32" ? "python" : "python3";
+    // On Windows plain `python` may be the Store stub, so try the Python Launcher first and verify each candidate.
+    if (process.platform === "win32") {
+      return (await probePython("py", ["-3"])) ?? (await probePython("python")) ?? "python";
+    }
+    return "python3";
   }
 
   // ----- showing a result

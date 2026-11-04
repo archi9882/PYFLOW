@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import * as path from "node:path";
 import test from "node:test";
-import { runAnalyzer } from "../src/runner";
+import { probePython, runAnalyzer } from "../src/runner";
 
 const analyzerDir = path.join(__dirname, "..", "..", "python");
 const python = process.env.PYFLOW_TEST_PYTHON || "python3";
@@ -53,4 +53,10 @@ test("each failure has its own outcome", async () => {
   assert.deepEqual([missing.ok, !missing.ok && missing.kind], [false, "no_python"]);
   const slow = await runAnalyzer(python, analyzerDir, "x = 1\n", opts(0, 0), 1);
   assert.equal(slow.ok, false); // 1 ms is not enough to start Python
+});
+
+test("probePython gives the full path of a working interpreter and null for a broken one", async () => {
+  const found = await probePython(python);
+  assert.ok(found && found.length > 0);
+  assert.equal(await probePython("definitely-not-a-python"), null);
 });

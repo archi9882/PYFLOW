@@ -31,3 +31,19 @@ export function runAnalyzer(
     child.stdin.end(source, "utf8");
   });
 }
+
+// Asks a candidate interpreter for its own full path. Returns null when it cannot run, exits non-zero
+// (the Windows Store stub exits with 49 and prints nothing), or is older than Python 3.10.
+export function probePython(command: string, prefixArgs: string[] = [], timeoutMs = 5000): Promise<string | null> {
+  return new Promise((resolve) => {
+    const code = "import sys; print(sys.executable if sys.version_info >= (3, 10) else '')";
+    let out = "";
+    let settled = false;
+    const done = (value: string | null) => { if (!settled) { settled = true; clearTimeout(timer); resolve(value); } };
+    const child = spawn(command, [...prefixArgs, "-I", "-c", code], { stdio: ["ignore", "pipe", "ignore"], windowsHide: true });
+    const timer = setTimeout(() => { child.kill(); done(null); }, timeoutMs);
+    child.stdout.on("data", (c: Buffer) => { out += c.toString("utf8"); });
+    child.on("error", () => done(null));
+    child.on("close", (exit) => done(exit === 0 && out.trim() ? out.trim() : null));
+  });
+}
