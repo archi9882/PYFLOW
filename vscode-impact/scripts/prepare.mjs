@@ -1,6 +1,7 @@
 // Copies what the extension ships with into place:
 //   python/pyflow/   the analyzer, from ../core/pyflow (so there is one copy of the code)
 //   media/vendor/    Cytoscape and dagre for the graph, fetched and hash-checked by ../scripts/vendor.py
+//   site/            the full web page (same build as the site), for the "full view" command
 import { cpSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { dirname, join } from "node:path";
@@ -18,7 +19,11 @@ for (const f of readdirSync(core)) {
 }
 console.log("analyzer copied to python/pyflow");
 
-const python = process.platform === "win32" ? "python" : "python3";
-execFileSync(python, [join(root, "..", "scripts", "vendor.py"), join(root, "media", "vendor"),
-  "--only", "cytoscape", "dagre", "cytoscape-dagre"], { stdio: "inherit" });
+// PYFLOW_PYTHON overrides; on Windows plain `python` may be the Store stub, so use the launcher.
+const python = process.env.PYFLOW_PYTHON || (process.platform === "win32" ? "py" : "python3");
+const py = (script, ...args) => execFileSync(python, [...(python === "py" ? ["-3"] : []), script, ...args], { stdio: "inherit" });
+py(join(root, "..", "scripts", "vendor.py"), join(root, "media", "vendor"), "--only", "cytoscape", "dagre", "cytoscape-dagre");
 console.log("graph libraries ready in media/vendor");
+
+py(join(root, "..", "scripts", "build_site.py"), join(root, "site"));
+console.log("full web page ready in site/");

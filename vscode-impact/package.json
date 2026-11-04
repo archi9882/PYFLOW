@@ -52,6 +52,11 @@
         "command": "pyflow.clear",
         "title": "%command.clear%",
         "category": "pyflow"
+      },
+      {
+        "command": "pyflow.openFull",
+        "title": "%command.openFull%",
+        "category": "pyflow"
       }
     ],
     "keybindings": [

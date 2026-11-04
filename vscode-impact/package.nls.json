@@ -2,6 +2,7 @@
   "command.showImpact": "What changes if this changes?",
   "command.showGraph": "Show impact graph",
   "command.clear": "Clear impact marks",
+  "command.openFull": "Open the full view (same as the web page)",
   "view.impact": "pyflow impact",
   "view.welcome": "Put the cursor on a variable or function in a Python file and run **pyflow: What changes if this changes?** (Ctrl+Alt+I).",
   "config.pythonPath": "Python used to run the analysis (3.10 or newer). Leave empty to use the interpreter selected in the Python extension, or `python3` / `python` from PATH.",

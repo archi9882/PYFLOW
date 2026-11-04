@@ -33,7 +33,7 @@ const SOURCE = [
 
 test("registers its commands, view context and decoration types", () => {
   const { fake, context } = setup();
-  assert.deepEqual([...fake.handlers.keys()].sort(), ["pyflow.clear", "pyflow.reveal", "pyflow.showGraph", "pyflow.showImpact"]);
+  assert.deepEqual([...fake.handlers.keys()].sort(), ["pyflow.clear", "pyflow.openFull", "pyflow.reveal", "pyflow.showGraph", "pyflow.showImpact"]);
   assert.ok(context.subscriptions.length >= 8);
   assert.ok(fake.state.hover && fake.state.tree);
 });
@@ -153,4 +153,20 @@ test("Chinese UI strings are used when VS Code runs in Chinese", async () => {
   await fake.handlers.get("pyflow.showImpact")!();
   assert.match(fake.state.status[0].text, /處受影響/);
   assert.equal(fake.state.treeViews[0].title, "如果 total.price 改變");
+});
+
+test("the full view loads the web page and receives the open Python file", async () => {
+  const { fake } = setup();
+  const editor = makeEditor(SOURCE, 0, 10);
+  fake.state.active = editor; fake.state.visible = [editor];
+  await fake.handlers.get("pyflow.openFull")!();
+  const panel = fake.log.panels.at(-1);
+  assert.equal(panel.id, "pyflow.full");
+  assert.match(panel.webview.html, /<base href="webview:file:\/\/.*site\/">/); // the page is read from site/
+  assert.match(panel.webview.html, /wasm-unsafe-eval/);
+  panel.send({ type: "ready" }); // the page is listening: the current file goes in
+  const sent = fake.log.posted.find((m) => m.type === "file");
+  assert.deepEqual([sent.name, sent.text === SOURCE], ["demo.py", true]);
+  await fake.handlers.get("pyflow.openFull")!(); // a second run brings the same panel back
+  assert.equal(panel.revealed, 1);
 });

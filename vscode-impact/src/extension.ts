@@ -6,6 +6,7 @@ import * as vscode from "vscode";
 import {
   decorationPlan, displayName, explain, graphPayload, Impact, langOf, summaryText, tr, treeModel, TreeGroup, TreeItem,
 } from "./core";
+import { FullView } from "./fullView";
 import { graphHtml } from "./html";
 import { probePython, runAnalyzer } from "./runner";
 
@@ -302,6 +303,7 @@ class Controller {
 
 export function activate(context: vscode.ExtensionContext): void {
   new Controller(context);
+  new FullView(context);
 }
 
 export function deactivate(): void { /* everything is disposed through context.subscriptions */ }
