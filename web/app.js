@@ -9,9 +9,12 @@ const PYODIDE_INDEX = new URL("vendor/pyodide/", document.baseURI).href;
 const PY_FILES = ["__init__.py", "analyzer.py", "graph.py", "api.py", "cli.py"];
 const MAX_BYTES = 2_000_000;   // larger files work but the graph becomes unreadable
 const MIN_ZOOM = 0.6;          // never fit so far out that labels are unreadable
+const MAX_FIT_ZOOM = 1.25;     // ...nor so far in that a small graph looks enormous
 const BIG_GRAPH = 120;         // nodes; above this, suggest narrowing the view
 const LABEL_EDGES = 24;        // show edge labels only when the view is this small
 const FOLD_OVERVIEW = 60;      // overview nodes; above this, methods fold into their class
+const MAX_IMPACT = 150;        // nodes drawn for an impact result; the list and marks cover all
+const DEPTH_INF = 7;           // slider position meaning "no limit"
 const REDUCED_MOTION = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 // ---------------------------------------------------------------- i18n
@@ -52,7 +55,7 @@ const STRINGS = {
     "legend.flag": "Has constructs pyflow cannot follow",
     "legend.call": "Call",
     "legend.data": "Data flow",
-    "graph.hint": "Hover a node to trace its path. Click to re-center. Click a source line to jump to it.",
+    "graph.hint": "Hover a node to trace how the change reaches it. Click a node to ask the same question about it.",
     "refresh": "Refresh", "refresh.title": "Read the file again from the editor, including unsaved changes",
     "details.foldAll": "Fold all", "details.unfoldAll": "Unfold all",
     "panel.resize": "Drag to resize; double-click to reset",
@@ -62,6 +65,29 @@ const STRINGS = {
     "notice.folded": "Large file: methods are folded into their class. Click a class to see its methods.",
     "label.methods": "{n} methods",
     "label.method": "1 method",
+    "mode.impact": "What changes", "mode.sources": "Where from", "mode.both": "Both",
+    "fam.control": "Conditions",
+    "legend.cond": "Only through a condition (if / loop)",
+    "legend.eff": "Output / side effect",
+    "code.hint": "click a variable",
+    "edge.control": "decides",
+    "impact.title": "If {name} changes",
+    "impact.none": "Nothing else in this file depends on it.",
+    "impact.n": "{n} affected",
+    "impact.values": "{n} variables", "impact.returns": "{n} return values", "impact.effects": "{n} outputs",
+    "impact.runs": "{n} run differently", "impact.callers": "{n} callers", "impact.external": "{n} library calls",
+    "impact.values.one": "1 variable", "impact.returns.one": "1 return value", "impact.effects.one": "1 output",
+    "impact.runs.one": "1 runs differently", "impact.callers.one": "1 caller", "impact.external.one": "1 library call",
+    "graph.flow": "Switch between left-to-right and top-to-bottom",
+    "impact.cond": "{n} only via a condition",
+    "impact.via": "via {path}",
+    "impact.recenter": "Ask the same about this",
+    "impact.trunc": "The graph shows the nearest {shown} of {total}. The list and the source marks cover all of them.",
+    "impact.depthcut": "Stopped at the depth limit; move the slider to ∞ to see everything.",
+    "impact.warn": "May be incomplete: pyflow cannot follow these",
+    "grp.value": "Variables and attributes", "grp.returns": "Return values", "grp.effect": "Output and side effects",
+    "grp.external": "Passed to library calls", "grp.runs": "Runs differently", "grp.caller": "Callers",
+    "cond.badge": "condition",
     "details.title": "Details",
     "details.none": "Select a node.",
     "unsup.title": "Not analyzed",
@@ -128,7 +154,7 @@ const STRINGS = {
     "legend.flag": "含 pyflow 無法追蹤的寫法",
     "legend.call": "呼叫",
     "legend.data": "資料流",
-    "graph.hint": "滑過節點可追蹤路徑；點擊改以它為中心；點原始碼某行可跳到對應節點。",
+    "graph.hint": "滑過節點可追蹤變化如何到達它；點擊節點可對它問同樣的問題。",
     "refresh": "重新整理", "refresh.title": "從編輯器重新讀取檔案，包含尚未存檔的修改",
     "details.foldAll": "全部摺疊", "details.unfoldAll": "全部展開",
     "panel.resize": "拖曳調整寬度；雙擊恢復預設",
@@ -138,6 +164,27 @@ const STRINGS = {
     "notice.folded": "檔案較大：方法已收合進所屬類別。點擊類別可查看其方法。",
     "label.methods": "{n} 個方法",
     "label.method": "1 個方法",
+    "mode.impact": "會影響哪裡", "mode.sources": "從哪裡來", "mode.both": "兩者",
+    "fam.control": "條件",
+    "legend.cond": "僅經由條件（if／迴圈）",
+    "legend.eff": "輸出／副作用",
+    "code.hint": "點擊變數",
+    "edge.control": "決定",
+    "impact.title": "如果 {name} 改變",
+    "impact.none": "此檔案中沒有其他東西依賴它。",
+    "impact.n": "{n} 處受影響",
+    "impact.values": "{n} 個變數", "impact.returns": "{n} 個回傳值", "impact.effects": "{n} 個輸出",
+    "impact.runs": "{n} 個函式執行方式改變", "impact.callers": "{n} 個呼叫者", "impact.external": "{n} 個函式庫呼叫",
+    "graph.flow": "切換由左至右／由上而下",
+    "impact.cond": "{n} 個僅經由條件",
+    "impact.via": "經由 {path}",
+    "impact.recenter": "對它問同樣的問題",
+    "impact.trunc": "圖只畫最近的 {shown} 個（共 {total} 個）；清單與原始碼標記涵蓋全部。",
+    "impact.depthcut": "已停在深度上限；把滑桿移到 ∞ 可看到全部。",
+    "impact.warn": "結果可能不完整：pyflow 無法追蹤這些地方",
+    "grp.value": "變數與屬性", "grp.returns": "回傳值", "grp.effect": "輸出與副作用",
+    "grp.external": "傳入函式庫呼叫", "grp.runs": "執行方式改變", "grp.caller": "呼叫者",
+    "cond.badge": "條件",
     "details.title": "詳細資訊",
     "details.none": "請選取節點。",
     "unsup.title": "未分析",
@@ -180,6 +227,11 @@ function pickLanguage() {
 }
 
 let lang = pickLanguage();
+
+// Like t(), but uses "<key>.one" when n is 1 and the language has one.
+function tn(key, n) {
+  return t(n === 1 && (STRINGS[lang][`${key}.one`] || STRINGS.en[`${key}.one`]) ? `${key}.one` : key, { n });
+}
 
 // Translate a key and fill {placeholders}.
 function t(key, vars = {}) {
@@ -345,9 +397,18 @@ const state = {
   active: -1,          // keyboard-highlighted candidate
   pendingFile: null,   // file dropped before Python finished loading
   view: null,          // last subgraph drawn
+  mode: "impact",      // "impact" | "sources" | "both"
+  depth: { impact: DEPTH_INF, sources: 2, both: 2 }, // slider value remembered per mode
+  impact: null,        // last impact result (when mode is impact)
+  syntax: new Map(),   // line -> [[start, end, class]] from Python's tokenizer
+  marks: new Map(),    // line -> [[start, end, class]] for the current impact result
+  refsByLine: new Map(),
+  example: null,       // name of the loaded example, for shareable links
+  flow: null,          // "LR" | "TB" when the user chose a direction; null = automatic
 };
 
 let cy = null;
+let currentLayout = null;    // the layout whose result should be fitted; older ones are ignored
 let laidOutDirection = null; // flow direction of the last layout, to re-layout when it changes
 
 function setStatus(key) { $("#status").textContent = t(key); }
@@ -412,6 +473,14 @@ function loadSource(text, name) {
   ]);
   state.center = null;
   state.selected = null;
+  state.impact = null;
+  state.marks = new Map();
+  state.refsByLine = new Map();
+  for (const r of state.graph.refs || []) {
+    if (!state.refsByLine.has(r.line)) state.refsByLine.set(r.line, []);
+    state.refsByLine.get(r.line).push(r);
+  }
+  $("#impact-panel").hidden = true;
   setStatus("status.ready");
 
   renderCode(text);
@@ -451,17 +520,26 @@ async function loadExampleList() {
     const placeholder = new Option(t("example.pick"), "");
     placeholder.dataset.i18n = "example.pick";
     select.add(placeholder);
-    list.forEach((name) => select.add(new Option(name, name)));
+    // Entries are {name, hero}: hero is the name to look up first, so an example opens on an answer.
+    list.map((e) => (typeof e === "string" ? { name: e, hero: null } : e)).forEach((e) => {
+      const option = new Option(e.name, e.name);
+      option.dataset.hero = e.hero || "";
+      select.add(option);
+    });
   } catch (_) {
     select.closest(".row").hidden = true; // examples are optional
   }
 }
 
-async function loadExample(name) {
+async function loadExample(name, query) {
   if (!name) return;
   const text = await (await fetch(`examples/${name}`)).text();
-  $("#example-select").value = name;
+  const select = $("#example-select");
+  select.value = name;
+  state.example = name;
   loadSource(text, name);
+  const hero = query ?? select.selectedOptions[0]?.dataset.hero;
+  if (hero) focusQuery(hero);
 }
 
 // Inside the VS Code extension (vscode/extension.js) the editor sends the .py file being
@@ -492,10 +570,32 @@ function listenToEditor() {
   refresh.addEventListener("click", () => VSCODE.postMessage({ type: "refresh" }));
 }
 
+// Open on the link's example if there is one, else on the class example.
 async function loadDefaultExample() {
+  const params = new URLSearchParams(location.hash.slice(1));
   const options = [...$("#example-select").options];
-  const preferred = options.find((o) => o.value === "class_based.py") || options.find((o) => o.value);
-  if (preferred) await loadExample(preferred.value);
+  const wanted = options.find((o) => o.value && o.value === params.get("ex"));
+  const preferred = wanted || options.find((o) => o.value === "class_based.py") || options.find((o) => o.value);
+  if (params.get("m") && ["impact", "sources", "both"].includes(params.get("m"))) setMode(params.get("m"), false);
+  if (preferred) await loadExample(preferred.value, wanted ? params.get("q") : undefined);
+}
+
+// Look a name up and show it: the first exact match, else the best match.
+function focusQuery(query) {
+  if (!state.api || !state.graph || state.graph.error) return;
+  const hits = JSON.parse(state.api.find(query, 5));
+  if (!hits.length) return;
+  $("#search").value = query;
+  focusNode((hits.find((h) => h.score === 0) || hits[0]).id);
+}
+
+// Keep the address bar pointing at what is on screen, so a link shares the view.
+function updateHash() {
+  if (!state.example || !state.center) return;
+  const n = state.nodesById.get(state.center);
+  if (!n) return;
+  const params = new URLSearchParams({ ex: state.example, q: qualified(n), m: state.mode });
+  try { history.replaceState(null, "", `#${params}`); } catch (_) { /* sandboxed frames may refuse */ }
 }
 
 // ---------------------------------------------------------------- search
@@ -578,13 +678,26 @@ function families() {
   const fams = [];
   if ($("#fam-call").checked) fams.push("call");
   if ($("#fam-data").checked) fams.push("data");
+  if ($("#fam-control").checked) fams.push("control");
   return fams.join(",");
+}
+
+function setMode(mode, redraw = true) {
+  state.mode = mode;
+  document.querySelectorAll(".seg button").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.mode === mode)));
+  // "Inside functions" only shapes the other two views; impact mode answers for functions itself.
+  $("#fn-inside").closest("label").hidden = mode === "impact";
+  const depth = state.depth[mode];
+  $("#depth").value = depth;
+  $("#depth-value").textContent = depth >= DEPTH_INF ? "∞" : depth;
+  if (redraw) refresh();
 }
 
 function focusNode(id) {
   state.center = id;
   refresh();
   selectNode(id);
+  updateHash();
 }
 
 function showOverview() {
@@ -595,16 +708,31 @@ function showOverview() {
 // Redraw the current view with the current controls.
 function refresh() {
   if (!state.api || !state.graph || state.graph.error) return;
+  const depth = Number($("#depth").value);
   // A function or method in the middle is drawn from the inside (params, locals, one step
   // around) unless "Inside functions" is off; depth and direction do not apply to that view.
+  // In "What changes" mode the impact answer is shown instead: for a function it is the
+  // callers and results that change, which the inside view does not say.
   const kind = state.center && state.nodesById.get(state.center)?.kind;
-  const inside = $("#fn-inside").checked && (kind === "function" || kind === "method");
-  let sub = !state.center ? JSON.parse(state.api.whole_file())
-    : inside ? JSON.parse(state.api.inside(state.center, families()))
-    : JSON.parse(state.api.neighborhood(state.center, Number($("#depth").value), $("#direction").value, families()));
-  if (!state.center && sub.nodes.length > FOLD_OVERVIEW) sub = foldMethods(sub);
+  const inside = $("#fn-inside").checked && (kind === "function" || kind === "method") && state.mode !== "impact";
+  let sub;
+  state.impact = null;
+  if (!state.center) {
+    sub = JSON.parse(state.api.whole_file());
+    if (sub.nodes.length > FOLD_OVERVIEW) sub = foldMethods(sub);
+  } else if (state.mode === "impact") {
+    // The answer to "what changes?": everything downstream, through data and (optionally) conditions.
+    sub = state.impact = JSON.parse(state.api.impact_of(state.center, depth >= DEPTH_INF ? 0 : depth,
+      $("#fam-control").checked ? 1 : 0, MAX_IMPACT));
+  } else if (inside) {
+    sub = JSON.parse(state.api.inside(state.center, families()));
+  } else {
+    sub = JSON.parse(state.api.neighborhood(state.center, depth, state.mode === "sources" ? "upstream" : "both", families()));
+  }
   drawGraph(sub);
-  markViewLines(sub);
+  renderImpact(state.impact);
+  if (state.impact) applyMarks(state.impact);
+  else { applyMarks(null); markViewLines(sub); }
 }
 
 // Overview of a large file: replace each class's methods by the class itself,
@@ -653,7 +781,8 @@ function cssVar(name) {
 function graphStyle() {
   const c = {
     text: cssVar("--text"), muted: cssVar("--muted"), up: cssVar("--up"), down: cssVar("--down"),
-    center: cssVar("--center"), fn: cssVar("--node-fn"), v: cssVar("--node-var"), attr: cssVar("--node-attr"),
+    center: cssVar("--center"), cond: cssVar("--cond"), eff: cssVar("--eff"),
+    fn: cssVar("--node-fn"), v: cssVar("--node-var"), attr: cssVar("--node-attr"),
     ext: cssVar("--node-ext"), group: cssVar("--group"), border: cssVar("--border"),
     call: cssVar("--edge-call"), data: cssVar("--edge-data"), flag: cssVar("--flag"), bg: cssVar("--surface"),
   };
@@ -679,6 +808,8 @@ function graphStyle() {
     } },
     { selector: "node[side = 'up']", style: { "border-color": c.up, "border-width": 2.5 } },
     { selector: "node[side = 'down']", style: { "border-color": c.down, "border-width": 2.5 } },
+    { selector: "node[influence = 'condition']", style: { "border-color": c.cond, "border-style": "dashed", "border-width": 2.5 } },
+    { selector: "node[category = 'effect']", style: { "border-color": c.eff, "border-width": 3.5, "border-style": "solid", "color": c.eff, "font-weight": 600 } },
     { selector: "node[?flagged]", style: { "border-color": c.flag, "border-style": "dashed", "border-width": 2.5 } },
     { selector: "node[?isCenter]", style: { "border-color": c.center, "border-width": 4, "border-style": "solid" } },
     { selector: "node:selected", style: { "overlay-color": c.center, "overlay-opacity": 0.12, "overlay-padding": 5 } },
@@ -692,6 +823,9 @@ function graphStyle() {
     { selector: "edge[kind = 'call']", style: {
       "line-color": c.call, "target-arrow-color": c.call, "line-style": "solid", "width": 2,
     } },
+    { selector: "edge[kind = 'control']", style: {
+      "line-color": c.cond, "target-arrow-color": c.cond, "line-style": "dotted", "width": 2,
+    } },
     { selector: "edge.show-label, edge.path", style: { "label": "data(label)" } },
     { selector: ".faded", style: { "opacity": 0.18 } },
     { selector: "edge.path", style: { "width": 3.5, "z-index": 10 } },
@@ -699,14 +833,14 @@ function graphStyle() {
   ];
 }
 
-function nodeLabel(n, grouped) {
+function nodeLabel(n, grouped, crowded = true) {
   if (n.folded) return `${n.name}\n${n.folded === 1 ? t("label.method") : t("label.methods", { n: n.folded })}`;
   switch (n.kind) {
     case "function": return `${n.name}()`;
     case "method": return grouped ? `${n.name}()` : `${n.scope}.${n.name}()`;
     case "attribute": return grouped ? `.${n.name}` : `${n.scope}.${n.name}`;
     case "variable":
-    case "parameter": return grouped ? n.name : `${n.name}\n${scopeLabel(n.scope)}`; // a box already names the scope
+    case "parameter": return grouped || !crowded ? n.name : `${n.name}\n${scopeLabel(n.scope)}`; // a box already names the scope
     default: return n.name;
   }
 }
@@ -731,6 +865,9 @@ function buildElements(sub) {
   });
   const groups = [...members].filter(([, count]) => count >= 2).map(([g]) => g);
   const groupSet = new Set(groups);
+  // A variable's scope is shown only when another visible variable has the same name.
+  const seen = new Map();
+  sub.nodes.forEach((n) => { if (n.kind === "variable" || n.kind === "parameter") seen.set(n.name, (seen.get(n.name) || 0) + 1); });
   return [
     ...(fnBox ? [{ data: { id: fnBox, label: `${scopeLabel(sub.scope)}()`, kind: "group" } }] : []),
     ...groups.map((g) => ({ data: { id: `grp:${g}`, label: g, kind: "group" } })),
@@ -738,8 +875,8 @@ function buildElements(sub) {
       const g = inBox(n) ? null : groupOf(n);
       const parent = inBox(n) ? fnBox : g && groupSet.has(g) ? `grp:${g}` : undefined;
       return { data: {
-        id: n.id, parent, label: nodeLabel(n, Boolean(parent)), fullLabel: nodeLabel(n, false),
-        kind: n.kind, level: n.level,
+        id: n.id, parent, label: nodeLabel(n, Boolean(parent), seen.get(n.name) > 1), fullLabel: nodeLabel(n, false, seen.get(n.name) > 1),
+        kind: n.kind, level: n.level, influence: n.influence || "", category: n.category || "",
         side: n.level < 0 ? "up" : n.level > 0 ? "down" : "mid",
         isCenter: n.id === sub.center, flagged: n.flags.length > 0,
       } };
@@ -779,8 +916,24 @@ function initGraph() {
   cy.on("pan zoom", hideTooltip);
 }
 
+// Past this many nodes, an impact graph shows only the step that brought each node in,
+// which reads as a tree; the list and the source marks still carry every connection.
+const TREE_ABOVE = 40;
+
+function asTree(sub) {
+  if (!sub.nodes.length || sub.nodes[0].category !== "source" || sub.nodes.length <= TREE_ABOVE) return sub;
+  const shown = new Set(sub.nodes.map((n) => n.id));
+  const parents = new Map();
+  for (const n of sub.nodes.slice(1)) {
+    const step = n.path[n.path.length - 1];
+    if (step && shown.has(step.from) && shown.has(step.to)) parents.set(`${step.from}|${step.to}|${step.kind}`, step);
+  }
+  const edges = sub.edges.filter((e) => parents.has(`${e.source}|${e.target}|${e.kind}`));
+  return { ...sub, edges };
+}
+
 function drawGraph(rawSub) {
-  const sub = applyFilters(rawSub);
+  const sub = asTree(applyFilters(rawSub));
   state.view = rawSub;
   if (!cy) initGraph();
   hideTooltip();
@@ -820,10 +973,12 @@ function drawGraph(rawSub) {
     sort: (a, b) => (a.data("parent") || a.id()).localeCompare(b.data("parent") || b.id()),
     animate, animationDuration: 320,
   });
+  currentLayout = layout;
   layout.one("layoutstop", () => {
+    if (layout !== currentLayout) return; // a newer draw replaced this graph while it was animating
     dissolveCrowdedGroups();
     if (overview) packComponents();
-    fitView(sub.center, animate);
+    fitView(sub.center, animate, state.mode === "impact" && Boolean(state.impact));
   });
   layout.run();
   if (sub.center) cy.getElementById(sub.center).select();
@@ -831,7 +986,7 @@ function drawGraph(rawSub) {
 
 // Left to right on wide screens (as agreed); top to bottom on narrow ones,
 // where a horizontal flow would not fit.
-function flowDirection() { return cy.width() < 600 ? "TB" : "LR"; }
+function flowDirection() { return state.flow || (cy.width() < 600 ? "TB" : "LR"); }
 
 // A class box is only drawn if no outside node landed inside it; otherwise the
 // box would claim a node that is not part of the class. Dissolved boxes fall
@@ -856,13 +1011,22 @@ function dissolveCrowdedGroups() {
 
 // Fit the graph, but never so far out that labels become unreadable:
 // then zoom to the floor and show the center (or the top-left of the overview).
-function fitView(centerId, animated) {
+function fitView(centerId, animated, startAtEdge = false) {
   const apply = () => {
     cy.fit(undefined, 36);
+    if (cy.zoom() > MAX_FIT_ZOOM) { cy.zoom(MAX_FIT_ZOOM); cy.center(); } // a tiny graph need not fill the screen
     if (cy.zoom() >= MIN_ZOOM) return;
     cy.zoom(MIN_ZOOM);
-    if (centerId) {
-      cy.center(cy.getElementById(centerId));
+    const centerNode = centerId ? cy.getElementById(centerId) : null;
+    if (centerNode && centerNode.empty()) { cy.center(); return; } // the graph changed under a running layout
+    if (centerId && startAtEdge) {
+      // An impact result flows away from its center, so put the center at the near edge
+      // instead of the middle, where half the screen would stay empty.
+      const pos = centerNode.position();
+      if (flowDirection() === "LR") cy.pan({ x: 48 - pos.x * MIN_ZOOM, y: cy.height() / 2 - pos.y * MIN_ZOOM });
+      else cy.pan({ x: cy.width() / 2 - pos.x * MIN_ZOOM, y: 48 - pos.y * MIN_ZOOM });
+    } else if (centerId) {
+      cy.center(centerNode);
     } else {
       const bb = cy.elements().boundingBox();
       cy.pan({ x: 36 - bb.x1 * MIN_ZOOM, y: 56 - bb.y1 * MIN_ZOOM });
@@ -1116,40 +1280,243 @@ function renderUnsupported() {
   });
 }
 
-// Source panel with syntax colours from Python's own tokenizer.
+// Source panel: syntax colours from Python's own tokenizer, plus marks for the current answer.
 function renderCode(text) {
   const ol = $("#code");
   ol.innerHTML = "";
-  const spansByLine = new Map();
+  state.syntax = new Map();
   try {
     for (const [line, start, end, cls] of JSON.parse(state.api.highlight(text))) {
-      if (!spansByLine.has(line)) spansByLine.set(line, []);
-      spansByLine.get(line).push([start, end, cls]);
+      if (!state.syntax.has(line)) state.syntax.set(line, []);
+      state.syntax.get(line).push([start, end, cls]);
     }
   } catch (_) { /* uncoloured source is still useful */ }
 
   const frag = document.createDocumentFragment();
-  state.sourceLines.forEach((line, i) => {
-    const ln = i + 1;
+  state.sourceLines.forEach((_, i) => {
     const li = document.createElement("li");
-    let pos = 0;
-    for (const [start, end, cls] of (spansByLine.get(ln) || []).sort((a, b) => a[0] - b[0])) {
-      if (start < pos) continue;
-      if (start > pos) li.append(line.slice(pos, start));
-      const span = document.createElement("span");
-      span.className = `t-${cls}`;
-      span.textContent = line.slice(start, end);
-      li.append(span);
-      pos = end;
-    }
-    li.append(line.slice(pos) || (pos === 0 ? " " : ""));
-    if (state.linesWithNodes.has(ln)) {
-      li.classList.add("linkable");
-      li.dataset.line = ln;
-    }
+    li.dataset.line = i + 1;
+    if (state.linesWithNodes.has(i + 1)) li.classList.add("linkable");
     frag.append(li);
+    paintLine(li, i + 1);
   });
   ol.append(frag);
+}
+
+// Write one line as segments: each carries its syntax class and, if any, its mark class.
+function paintLine(li, ln) {
+  const text = state.sourceLines[ln - 1] ?? "";
+  const syntax = state.syntax.get(ln) || [];
+  const marks = state.marks.get(ln) || [];
+  const cuts = new Set([0, text.length]);
+  for (const [a, b] of [...syntax, ...marks]) { cuts.add(Math.min(a, text.length)); cuts.add(Math.min(b, text.length)); }
+  const points = [...cuts].sort((a, b) => a - b);
+  const cover = (spans, a, b) => spans.find(([s0, e0]) => s0 <= a && b <= e0)?.[2];
+  const parts = [];
+  for (let i = 0; i + 1 < points.length; i++) {
+    const [a, b] = [points[i], points[i + 1]];
+    const syn = cover(syntax, a, b), mark = cover(marks, a, b);
+    if (!syn && !mark) { parts.push(text.slice(a, b)); continue; }
+    const span = document.createElement("span");
+    span.className = [syn && `t-${syn}`, mark && `m-${mark}`].filter(Boolean).join(" ");
+    span.textContent = text.slice(a, b);
+    parts.push(span);
+  }
+  li.replaceChildren(...(parts.length ? parts : [" "]));
+}
+
+// Mark the source for an impact result: where the change starts (blue) and where it lands.
+function applyMarks(result) {
+  const before = new Set(state.marks.keys());
+  const marks = new Map();
+  const add = (r, cls) => {
+    if (!marks.has(r.line)) marks.set(r.line, []);
+    marks.get(r.line).push([r.col, r.end, cls]);
+  };
+  const lines = new Set();
+  if (result) {
+    const info = new Map(result.nodes.map((n) => [n.id, n]));
+    (result.source_refs || []).forEach((r) => add(r, "src"));
+    (result.affected_refs || []).forEach((r) => {
+      const n = info.get(r.node);
+      add(r, n?.category === "effect" ? "eff" : n?.influence === "condition" ? "cnd" : "aff");
+    });
+    result.lines.forEach((ln) => lines.add(ln));
+  }
+  // A token can be listed twice (several affected nodes); keep the strongest mark per range.
+  const strength = { src: 4, eff: 3, cnd: 2, aff: 1 };
+  for (const [ln, list] of marks) {
+    const best = new Map();
+    for (const m of list) {
+      const key = `${m[0]}:${m[1]}`;
+      if (!best.has(key) || strength[m[2]] > strength[best.get(key)[2]]) best.set(key, m);
+    }
+    marks.set(ln, [...best.values()]);
+  }
+  state.marks = marks;
+  const items = $("#code").children;
+  for (const ln of new Set([...before, ...marks.keys()])) if (items[ln - 1]) paintLine(items[ln - 1], ln);
+  for (let i = 0; i < items.length; i++) items[i].classList.toggle("in-view", lines.has(i + 1));
+}
+
+// ---------------------------------------------------------------- the answer panel
+
+const GROUP_ORDER = ["value", "returns", "effect", "external", "runs", "caller"];
+
+function pathText(result, node) {
+  const byId = new Map(result.nodes.map((n) => [n.id, n]));
+  const label = (id) => {
+    const n = byId.get(id) || state.nodesById.get(id);
+    if (!n) return id;
+    if (n.kind === "function" || n.kind === "method" || n.kind === "class") return `${n.id.slice(3)}${n.kind === "class" ? "" : "()"}`;
+    return n.kind === "variable" || n.kind === "parameter" || n.kind === "attribute"
+      ? (n.scope && n.scope !== "<module>" ? `${n.scope}.${n.name}` : n.name) : n.name;
+  };
+  const ids = [result.center, ...node.path.map((s) => s.to)];
+  return ids.map(label).join(" → ");
+}
+
+function renderImpact(result) {
+  const panel = $("#impact-panel");
+  panel.hidden = !result;
+  if (!result) return;
+  const center = result.nodes[0];
+  const s = result.summary;
+  const name = center.kind === "function" || center.kind === "method" ? `${qualified(center)}()` : qualified(center);
+  const title = $("#impact-title");
+  const [before, after] = t("impact.title", { name: "\u0000" }).split("\u0000");
+  const code = document.createElement("code");
+  code.textContent = name;
+  title.replaceChildren(before, code, after);
+
+  const chips = $("#impact-chips");
+  chips.replaceChildren();
+  const chip = (cls, text) => {
+    const el = document.createElement("span");
+    el.className = `chip ${cls}`;
+    el.textContent = text;
+    chips.append(el);
+  };
+  if (!s.total) {
+    chip("", t("impact.none"));
+  } else {
+    chip("", t("impact.n", { n: s.total }));
+    if (s.values) chip("", tn("impact.values", s.values));
+    if (s.returns) chip("", tn("impact.returns", s.returns));
+    if (s.effects) chip("eff", tn("impact.effects", s.effects));
+    if (s.runs) chip("", tn("impact.runs", s.runs));
+    if (s.callers) chip("", tn("impact.callers", s.callers));
+    if (s.by_condition) chip("cond", t("impact.cond", { n: s.by_condition }));
+  }
+
+  const note = $("#impact-note");
+  const notes = [];
+  if (result.truncated && s.shown < s.total) notes.push(t("impact.trunc", { shown: s.shown, total: s.total }));
+  else if (result.truncated) notes.push(t("impact.depthcut"));
+  note.textContent = notes.join(" ");
+  note.hidden = !notes.length;
+
+  const groups = $("#impact-groups");
+  groups.replaceChildren();
+  for (const key of GROUP_ORDER) {
+    const rows = result.nodes.slice(1).filter((n) => n.category === key);
+    if (!rows.length) continue;
+    const details = document.createElement("details");
+    details.className = "group";
+    details.open = key !== "external";
+    const summary = document.createElement("summary");
+    summary.append(`${t(`grp.${key}`)} `);
+    const count = document.createElement("span");
+    count.className = "n";
+    count.textContent = `(${rows.length})`;
+    summary.append(count);
+    const list = document.createElement("ul");
+    list.className = "items";
+    rows.forEach((n) => list.append(impactItem(result, n)));
+    details.append(summary, list);
+    groups.append(details);
+  }
+
+  const warn = $("#impact-warn");
+  warn.replaceChildren();
+  warn.hidden = !result.warnings.length;
+  if (result.warnings.length) {
+    const head = document.createElement("b");
+    head.textContent = t("impact.warn");
+    warn.append(head);
+    result.warnings.forEach((w) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      const c = document.createElement("code");
+      c.textContent = w.detail;
+      b.append(`${t(`u.${w.kind}`)}: `, c, ` · L${w.lines[0]}`);
+      b.addEventListener("click", () => highlightLines(w.lines));
+      warn.append(b);
+    });
+  }
+}
+
+function impactItem(result, n) {
+  const li = document.createElement("li");
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "item";
+  btn.dataset.id = n.id;
+  const top = document.createElement("div");
+  top.className = "top";
+  const nm = document.createElement("span");
+  nm.className = "nm";
+  // Name first; where it lives goes underneath, so long qualified names do not break mid-word.
+  const isFn = n.kind === "function" || n.kind === "method";
+  nm.textContent = isFn ? `${n.name}()` : n.name;
+  top.append(nm);
+  const owner = n.kind === "external" ? "" : n.kind === "method" || n.kind === "attribute" || n.kind === "variable" || n.kind === "parameter"
+    ? scopeLabel(n.scope) : "";
+  if (n.influence === "condition") {
+    const badge = document.createElement("span");
+    badge.className = "badge-cond";
+    badge.textContent = t("cond.badge");
+    top.append(badge);
+  }
+  const sc = document.createElement("span");
+  sc.className = "sc";
+  sc.textContent = n.where.length ? `L${n.where.slice(0, 3).join(", L")}` : "";
+  top.append(sc);
+  const where = document.createElement("div");
+  where.className = "where";
+  where.textContent = owner;
+  const why = document.createElement("div");
+  why.className = "why";
+  why.textContent = n.path.length > 1 ? t("impact.via", { path: pathText(result, n) }) : "";
+  const go = document.createElement("span");
+  go.className = "go";
+  go.textContent = `${t("impact.recenter")} →`;
+  go.addEventListener("click", (e) => {
+    e.stopPropagation();
+    $("#search").value = qualified(n);
+    focusNode(n.id);
+  });
+  btn.append(top, ...(owner ? [where] : []), why, go);
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".item.on").forEach((el) => el.classList.remove("on"));
+    btn.classList.add("on");
+    const node = cy?.getElementById(n.id);
+    if (node?.nonempty()) { cy.elements().unselect(); node.select(); tracePath(node); }
+    highlightLines(n.where);
+    selectNodeQuiet(n.id);
+  });
+  btn.addEventListener("mouseenter", () => { const node = cy?.getElementById(n.id); if (node?.nonempty()) tracePath(node); });
+  btn.addEventListener("mouseleave", () => { if (cy) clearTrace(); });
+  li.append(btn);
+  return li;
+}
+
+// Show a node in the details panel without moving the source highlight again.
+function selectNodeQuiet(id) {
+  state.selected = id;
+  const keep = [...$("#code").querySelectorAll(".hl")].map((li) => Number(li.dataset.line));
+  renderDetails(state.nodesById.get(id) || null);
+  highlightLines(keep);
 }
 
 // Outline the source lines involved in the current view.
@@ -1169,6 +1536,24 @@ function highlightLines(lines, scrollTo) {
     const box = $("#code");
     box.scrollTo({ top: target.offsetTop - box.clientHeight / 3, behavior: REDUCED_MOTION ? "auto" : "smooth" });
   }
+}
+
+// UTF-16 column of the caret inside a source line, or null if the user selected text instead.
+function caretColumn(li) {
+  const sel = window.getSelection();
+  if (!sel || !sel.rangeCount || !sel.isCollapsed || !li.contains(sel.anchorNode)) return null;
+  const range = document.createRange();
+  range.selectNodeContents(li);
+  range.setEnd(sel.anchorNode, sel.anchorOffset);
+  return range.toString().length;
+}
+
+// The node whose name token covers a position (the same rule as pyflow.locate).
+function tokenAt(line, col) {
+  const hits = (state.refsByLine.get(line) || []).filter((r) => r.col <= col && col <= r.end);
+  hits.sort((a, b) => (a.col <= col && col < a.end ? 0 : 1) - (b.col <= col && col < b.end ? 0 : 1));
+  const node = hits.length ? state.nodesById.get(hits[0].node) : null;
+  return node && node.kind !== "module" ? node : null;
 }
 
 // Clicking a source line jumps to the names defined or used there.
@@ -1242,15 +1627,36 @@ function bindEvents() {
   });
   $("#overview-btn").addEventListener("click", () => { search.value = ""; showOverview(); renderDetails(null); });
 
-  // Source lines are clickable.
+  // Click a variable or function name in the source to ask what changes if it changes;
+  // a click elsewhere on a line offers the names on that line.
   $("#code").addEventListener("click", (e) => {
-    const li = e.target.closest("li.linkable");
-    if (li) pickLine(Number(li.dataset.line));
+    const li = e.target.closest("li");
+    if (!li) return;
+    const ln = Number(li.dataset.line);
+    const col = caretColumn(li);
+    const hit = col === null ? null : tokenAt(ln, col);
+    if (hit) {
+      $("#search").value = qualified(hit);
+      focusNode(hit.id);
+    } else if (li.classList.contains("linkable")) {
+      pickLine(ln);
+    }
   });
 
+  // Mode switch: what changes / where from / both. Each mode remembers its own depth.
+  document.querySelectorAll(".seg button").forEach((b) => b.addEventListener("click", () => {
+    setMode(b.dataset.mode);
+    updateHash();
+  }));
+
   // View controls redraw the current center.
-  $("#depth").addEventListener("input", (e) => { $("#depth-value").textContent = e.target.value; refresh(); });
-  ["#direction", "#fam-call", "#fam-data", "#fam-ext", "#fn-inside"].forEach((sel) => $(sel).addEventListener("change", refresh));
+  $("#depth").addEventListener("input", (e) => {
+    const v = Number(e.target.value);
+    state.depth[state.mode] = v;
+    $("#depth-value").textContent = v >= DEPTH_INF ? "∞" : v;
+    refresh();
+  });
+  ["#fam-call", "#fam-data", "#fam-control", "#fam-ext", "#fn-inside"].forEach((sel) => $(sel).addEventListener("change", refresh));
 
   $("#lang-toggle").addEventListener("click", () => {
     lang = lang === "en" ? "zh-TW" : "en";
@@ -1262,8 +1668,15 @@ function bindEvents() {
       renderUnsupported();
       renderDetails(state.nodesById.get(state.selected) || null);
       if (state.view) drawGraph(state.view);
+      renderImpact(state.impact);
     }
     setStatus(state.api ? "status.ready" : "status.loading");
+  });
+
+  // Flow direction: automatic by width, or chosen with the button.
+  $("#flow-toggle").addEventListener("click", () => {
+    state.flow = flowDirection() === "LR" ? "TB" : "LR";
+    if (cy && state.view) drawGraph(state.view);
   });
 
   // Refit the graph when the window (or phone orientation) changes size.
@@ -1274,7 +1687,7 @@ function bindEvents() {
       if (!cy || !cy.nodes().length) return;
       cy.resize();
       if (flowDirection() !== laidOutDirection && state.view) drawGraph(state.view); // re-layout in the new direction
-      else fitView(state.center, false);
+      else fitView(state.center, false, state.mode === "impact" && Boolean(state.impact));
     }, 150);
   });
 
@@ -1290,5 +1703,6 @@ function bindEvents() {
 try { if (window.cytoscapeDagre) cytoscape.use(window.cytoscapeDagre); } catch (_) { /* already registered */ }
 applyLanguage();
 bindEvents();
+setMode(state.mode, false);
 showEmpty("empty.loading");
 loadExampleList().then(startPython);

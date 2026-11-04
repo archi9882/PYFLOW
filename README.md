@@ -1,147 +1,158 @@
 # pyflow
 
-[繁體中文](README.zh-TW.md)
+**If this variable changes, what else changes?**
 
-Drop a Python file into the page, type a variable or function name, and see
-where its values come from and where they go.
+Put the cursor on a variable, parameter, attribute or function in a Python file. pyflow marks every
+place its value can reach: other variables, return values, the callers that receive them, and output
+such as `print` or `write`. For each place it can show the path that leads there.
 
-**Live demo:** https://archi9882.github.io/SciML/
+[English] · [繁體中文](README.zh-TW.md)
 
-- Runs entirely in your browser. Your file is never uploaded.
-- Nothing to install: the analyzer is plain Python, run by [Pyodide](https://pyodide.org).
-- Works on any `.py` file: scripts, function modules, classes, data pipelines.
+![pyflow answering "if Product.price changes": 16 places are affected](docs/images/demo.gif)
 
-## Run it locally
+**Try it in your browser, nothing to install:**
+[open the demo](https://archi9882.github.io/SciML/#ex=class_based.py&q=Product.price&m=impact),
+then drop your own `.py` file on the page. Your file never leaves your browser.
 
-```bash
-cd pyflow
-python scripts/serve.py
+## Two ways to use it
+
+| | |
+|---|---|
+| **VS Code extension** | Marks the answer in your editor, lists it in the Explorer, explains each mark on hover. See [`vscode-impact/`](vscode-impact/README.md). |
+| **Web page** | Drag a file in, click any variable in the source. `python scripts/serve.py` runs it offline. |
+| **Command line** | `pyflow file.py -q price --impact` prints the answer with the reasons. |
+
+## What it tells you
+
+```python
+def shipping(weight, express):
+    if weight <= 0:
+        return 0
+    cost = weight * 4
+    if express:
+        cost = cost * 2
+    print(f"shipping: {cost}")
+    return cost
 ```
 
-This builds the site, downloads the libraries it needs once (about 14 MB,
-checked against the npm registry's published hashes and cached in
-`.vendor-cache/`), serves it at http://127.0.0.1:8000 and opens your browser.
-After the first run it works offline. Requires Python 3.10+; no other packages.
+```text
+$ pyflow shipping.py -q express --impact
+If shipping.express changes (express (parameter in shipping)):
 
-## How to use
+  3 things are affected: 1 variable, 1 return value, 1 output.
+  3 of them only through a condition (if / loop / guard).
 
-1. Open the demo and drop a `.py` file on the page (or pick an example).
-2. You first see the whole-file call graph: which function calls which.
-3. Type in the search box. Candidates appear as you type, each with its
-   scope, so `data` in `load()` and `data` in `main()` are separate entries.
-4. Pick one. The graph flows left to right:
-   - **orange, left**: upstream, where the value comes from
-   - **blue, middle**: the name you picked
-   - **green, right**: downstream, where the value goes
-5. Click any node to make it the new center. Adjust **Depth**, **Direction**
-   and the **Calls / Data flow / External calls** filters in the sidebar.
+Variables and attributes that change (1):
+  shipping.cost                line 6  [condition]
 
-Also on the page:
+Functions whose return value changes (1):
+  shipping()                   line 8  [condition]
+      via shipping.express -> shipping.cost -> shipping()
 
-- **Hover** a node to trace the exact path between it and the center.
-- **Click a line** in the source panel to jump to the names defined or used there.
-- Lines involved in the current view are marked in the source panel.
-- Methods and attributes of a class are drawn inside a class box when the
-  layout allows it; large files fold methods into their class in the overview.
-- Press <kbd>/</kbd> to jump to the search box. English and Traditional Chinese, light and dark.
+Output and side effects that change (1):
+  print                        line 7  [condition]
+      via shipping.express -> shipping.cost -> print
+```
 
-## What the graph shows
+No value moves from `express` into `cost`, yet changing `express` changes what is printed.
+pyflow follows that: a condition counts, and is labelled as one, because it is weaker evidence than a
+value that flows. Changing `weight` instead reaches `cost` through data (line 4) and through the guard
+clause (line 3), and the report says so.
 
-| Edge | Meaning | Example |
-|---|---|---|
-| calls | function A calls function B | `def main(): load()` |
-| (assign) | a value flows into a variable | `total = price * qty` |
-| arg | a value is passed into a parameter or external call | `clean(rows)` |
-| return | a variable is returned | `return result` |
-| result | a function's return value is used | `rows = load(path)` |
+## What it follows
 
-Supported in this version:
-
-- assignments, augmented assignments (`+=`), annotated assignments
-- function parameters, default values, return values, call arguments (positional and keyword)
-- tuple unpacking (`a, b = x, y` is paired element by element), `for` loop variables
-- comprehensions, lambdas, `with ... as`, `except ... as`, the walrus operator
-- methods called through `self`, through the class, or through an instance
-  created in the same scope (`cart = Cart(); cart.add(...)`) or annotated (`p: Product`)
-- inherited methods and `super().method()` for base classes defined in the same file
-- attributes: `self.x = ...` in one method flows to `self.x` read in another;
-  dataclass fields are the same attributes (`Product(name, price)` fills `Product.price`)
-- containers filled in place: `items.append(x)`, `d.update(...)`, `d[k] = x`
+- assignments, augmented assignments, tuple unpacking, `for` variables, comprehensions, lambdas, `with ... as`
+- function arguments (positional and keyword), defaults, return values, and the variables that receive them
+- an object depends on its constructor arguments; `self.x` is shared between methods; dataclass fields
+- inheritance and `super()` for classes defined in the same file
+- values put into containers: `items.append(x)`, `d[k] = x`, `d.update(...)`
+- conditions: `if` / `while` / `match` tests, loop iterables, and guard clauses (`if bad: return` guards the code after it)
 - reads of module-level and enclosing-function variables
-- calls into libraries and builtins (shown as dashed "external" nodes)
 
-## Limits (read this before trusting the graph)
+External calls (`print`, `len`, library functions) are endpoints. Values go in and are reported, but are
+not followed through the library, so unrelated variables are never connected by `print`.
+Output and side effects (`print`, `write`, `send`, `save`, `to_csv`, logging, ...) are listed separately.
 
-pyflow reads code; it does not run it. Anything decided at run time can be
-missed. Rather than skipping such code silently, pyflow lists it in the
-**Not analyzed** panel and outlines affected nodes with a red dashed border:
+## What it does not know (read this)
 
-| Reported as | Why it cannot be followed statically |
-|---|---|
-| `*args` / `**kwargs` | which argument lands where is only known at run time |
-| Decorator | a decorator can replace the function or change its signature |
-| Dynamic call (`getattr`, `exec`, `eval`, ...) | the target is computed at run time |
-| `global` / `nonlocal` rebinding | writes are linked, but other writers may exist |
-| `match` / `case` | pattern captures are not tracked yet |
-| `from x import *` | the imported names are unknown |
-
-Other simplifications to keep in mind:
+pyflow reads code; it does not run it. It says so when it cannot follow something, in the
+**Not analyzed** list and as a warning on any result that touches those spots:
+`*args` / `**kwargs`, decorators that may change a function, `getattr` / `exec`, `global` rebinding,
+`match` patterns, `import *`.
 
 - **One file at a time.** Imports from your other files are treated as external calls.
-- **Context-insensitive.** If `f` is called from two places, a value passed in
-  at one call site appears to reach the result of both.
-- **One node per attribute, not per object.** Two `Cart` objects share the node `Cart.items`.
-- **No aliasing.** `b = a; b.append(x)` does not mark `a` as changed.
-- **Control flow is not data flow.** `if x > 0: y = 1` does not draw `x -> y`.
-- Base classes from other files (or libraries) are not followed.
+- **No aliasing.** After `b = a`, changing `b` in place does not mark `a`.
+- **One node per attribute, not per object.** Two `Cart` objects share `Cart.items`.
+- **Calls are not told apart.** If `f` is called from two places, a value passed at one appears to reach both results.
+- **Dynamic behaviour is invisible.** Anything decided at run time can be missed.
+
+Where it can, pyflow errs toward showing a possible place rather than hiding it (every argument of a
+library call is assumed to reach its result, for instance). It cannot show what it cannot see, which is
+why the warnings above exist. The test suite holds [hand-labelled answers](tests/test_impact.py) for each rule above, and the analyzer
+has been run over the whole Python standard library (about 3,000 files) without errors.
 
 ## Command line
 
-The analyzer also works without the browser:
-
 ```bash
-cd pyflow
-pip install -e .
-pyflow examples/pure_functions.py              # summary + unsupported list
-pyflow examples/pure_functions.py -q tokens    # upstream / downstream of a name
-pyflow examples/pure_functions.py --json       # full graph as JSON
+pip install -e .                                  # from this folder; Python 3.10+, no dependencies
+pyflow file.py -q price --impact                  # what changes if `price` changes
+pyflow file.py --at 12:9 --impact                 # the name at line 12, column 9 (1-based)
+pyflow file.py -q price --impact --no-control     # data only, ignore conditions
+pyflow file.py -q price --impact --json           # machine-readable result (used by the editor extension)
+pyflow file.py -q price                           # where it comes from and where it goes
+cat file.py | pyflow x.py --stdin --at 3:5 --impact
 ```
 
-Or from Python:
+From Python:
 
 ```python
-from pyflow import analyze, search, subgraph
+from pyflow import analyze, search, impact
 
 graph = analyze(open("my_script.py").read())
-hit = search(graph, "total")[0]
-view = subgraph(graph, hit["id"], depth=2, direction="both")
+node = search(graph, "price")[0]
+result = impact(graph, node["id"])
+print(result["summary"])           # counts by kind
+for n in result["nodes"][1:]:
+    print(n["category"], n["id"], n["where"], [s["to"] for s in n["path"]])
 ```
+
+`result` also has `lines` (where the change arrives), `source_refs` / `affected_refs` (token positions,
+0-based UTF-16 columns, as editors use), `warnings` and `truncated`.
+
+## Run the web page locally
+
+```bash
+python scripts/serve.py
+```
+
+Builds the site, downloads the libraries it needs once (about 14 MB, checked against the npm registry's
+published hashes, cached in `.vendor-cache/`), serves it at http://127.0.0.1:8000 and opens your
+browser. After that it works offline.
 
 ## Development
 
 ```bash
-cd pyflow
 pip install pytest
-python -m pytest                       # analyzer, search and CLI tests
-python scripts/build_site.py           # assemble the self-contained site into _site/
-python scripts/serve.py --no-open      # serve it at http://127.0.0.1:8000
+python -m pytest                       # analyzer, impact benchmark, CLI
+
+cd vscode-impact && npm ci && npm run prepare-assets && npm test    # the editor extension
 ```
 
-Project layout:
-
 ```
-pyflow/
-  core/pyflow/     analyzer (ast -> graph), search / neighborhood queries, CLI, Pyodide bridge
-  tests/           pytest suite: one small snippet per language feature
-  web/             index.html, app.js, style.css (Cytoscape.js + dagre layout)
-  examples/        demo files in four styles: script, pure functions, classes, pipeline
-  scripts/         vendor.py (pinned, hash-checked libraries), build_site.py, serve.py
-  docs/            design notes
+core/pyflow/     analyzer (ast -> graph), impact / search / locate, CLI, the bridge used by the web page
+web/             the browser demo (Cytoscape.js + dagre)
+vscode-impact/   the VS Code extension that marks the answer in the editor (TypeScript; calls the analyzer through Python)
+vscode/          a second extension that shows the web page beside the editor
+tests/           one small program per rule, with the expected answer worked out by hand
+examples/        four styles: script, pure functions, classes, data pipeline
+scripts/         vendor.py (pinned, hash-checked libraries), build_site.py, serve.py
+docs/            design notes and images
 ```
 
-The GitHub Actions workflow `.github/workflows/pyflow.yml` runs the tests on
-Python 3.10, 3.12 and 3.13 and publishes the site to GitHub Pages from `main`.
+`.github/workflows/pyflow.yml` runs the tests on Python 3.10, 3.12 and 3.13, builds the extension,
+and publishes the web demo to GitHub Pages from `main`.
 
-## License
+## Feedback
 
-[MIT](LICENSE)
+A wrong or missing result is the most useful report: send a small piece of code and what you expected.
+It becomes a test. MIT licensed.

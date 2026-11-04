@@ -1,5 +1,6 @@
 """Pure-function module: small text utilities that call each other.
 
+Start with: STOP_WORDS
 Try searching for: normalize, word_counts, top_words, text
 """
 

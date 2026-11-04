@@ -1,5 +1,6 @@
 """Script style: top-level code that reads data, computes and prints.
 
+Start with: raw
 Try searching for: total, average, prices
 """
 

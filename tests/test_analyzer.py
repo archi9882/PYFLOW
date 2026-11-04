@@ -381,3 +381,23 @@ def test_analyzes_its_own_source():
     result = analyze(src)
     ids = {n["id"] for n in result["nodes"]}
     assert "fn:analyze" in ids and "fn:_Analyzer._call" in ids
+
+
+def test_a_library_call_around_a_constructor_does_not_make_an_instance(graph):
+    g = graph("""
+        class Cart:
+            def total(self): return 1
+        n = len(Cart())
+        n.total()
+    """)
+    assert not g.has("fn:<module>", "fn:Cart.total", "call")  # n is an int, not a Cart
+
+
+def test_an_object_depends_on_its_constructor_arguments(graph):
+    g = graph("""
+        class Box:
+            def __init__(self, v): pass
+        seed = 3
+        b = Box(seed)
+    """)
+    assert g.has("var:<module>:seed", "var:<module>:b", "assign")

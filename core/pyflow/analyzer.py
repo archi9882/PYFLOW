@@ -19,6 +19,12 @@ Edge kinds:
     arg     a value is passed as an argument (into a parameter or an external call)
     return  a variable is returned by a function (variable -> function)
     result  a function's return value is used (function -> variable / parameter)
+    control a condition decides whether something happens (variable -> variable,
+            function return, or call): ``if x: y = 1`` gives x -> y
+
+Positions: ``refs`` lists every place a node is written, read, defined or
+called, as 1-based lines and 0-based UTF-16 columns (what editors and
+JavaScript use), so a front end can underline exact tokens.
 
 Everything the analyzer cannot follow is reported in ``unsupported`` rather
 than silently ignored.
@@ -27,6 +33,7 @@ than silently ignored.
 from __future__ import annotations
 
 import ast
+import re
 from dataclasses import asdict, dataclass, field
 from typing import Iterator
 
@@ -48,6 +55,12 @@ HARMLESS_DECORATORS = frozenset(
     {"staticmethod", "classmethod", "property", "setter", "getter", "deleter", "dataclass",
      "abstractmethod", "override", "cache", "lru_cache", "cached_property", "wraps"}
 )
+
+# A block that ends like this leaves the statements after an `if` guarded by its test.
+_TERMINATORS = (ast.Return, ast.Raise, ast.Continue, ast.Break)
+
+# def / class keyword followed by the name, to find the name token of a definition.
+_DEF_NAME = re.compile(r"(?:async\s+)?(?:def|class)\s+(\w+)")
 
 # Scope-creating nodes; the declaration walk never enters their bodies.
 _NEW_SCOPE = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda,
@@ -158,6 +171,18 @@ def _call_name(func: ast.AST) -> str:
     return "<expr>"
 
 
+def _root_node(expr: ast.AST) -> ast.AST:
+    """The Name at the base of ``a.b[c].d`` (or the expression itself if there is none)."""
+    while isinstance(expr, (ast.Attribute, ast.Subscript)):
+        expr = expr.value
+    return expr
+
+
+def _ends_block(body: list[ast.stmt]) -> bool:
+    """True if the block always leaves its enclosing block (return, raise, continue, break)."""
+    return bool(body) and isinstance(body[-1], _TERMINATORS)
+
+
 def _decorator_name(dec: ast.AST) -> str:
     """Last segment of a decorator name: ``@functools.lru_cache(8)`` -> ``lru_cache``."""
     if isinstance(dec, ast.Call):
@@ -166,7 +191,10 @@ def _decorator_name(dec: ast.AST) -> str:
 
 
 class _Analyzer:
-    def __init__(self) -> None:
+    def __init__(self, source: str = "") -> None:
+        self.lines = re.split(r"\r\n|\r|\n", source)  # same line breaks as Python's tokenizer
+        self.refs: dict[tuple, dict] = {}
+        self.ctrl: list[set[str]] = []  # condition sources guarding the statements being visited
         self.nodes: dict[str, Node] = {}
         self.edges: dict[tuple[str, str, str], Edge] = {}
         self.unsupported: dict[tuple[str, str, str], Unsupported] = {}
@@ -174,6 +202,7 @@ class _Analyzer:
         self.class_scopes: dict[str, Scope] = {}  # class node id -> scope
         self.funcinfo: dict[str, FuncInfo] = {}  # callable node id -> argument mapping
         self.instance_of: dict[str, str] = {}  # variable id -> class id (cart = Cart(...))
+        self.constructed: dict[int, str] = {}  # id(Call node) -> class id, for calls that build an instance
         self.module = Scope(MODULE, "module", MODULE_ID)
 
     # ----- graph building helpers -------------------------------------------------
@@ -205,6 +234,50 @@ class _Analyzer:
             return
         for src in sorted(sources):
             self._edge(src, target, "result" if src.startswith("fn:") else kind, line)
+
+    # ----- positions ----------------------------------------------------------------
+
+    def _utf16(self, line: int, byte_col: int) -> int:
+        """Column in UTF-16 units for an ``ast`` column, which counts UTF-8 bytes."""
+        text = self.lines[line - 1] if 1 <= line <= len(self.lines) else ""
+        prefix = text.encode("utf-8")[:byte_col].decode("utf-8", "ignore")
+        return len(prefix.encode("utf-16-le")) // 2
+
+    def _ref(self, node_id: str | None, line: int, byte_start: int, byte_end: int, role: str) -> None:
+        if node_id is None:
+            return
+        col, end = self._utf16(line, byte_start), self._utf16(line, byte_end)
+        self.refs.setdefault((node_id, line, col, end, role),
+                             {"node": node_id, "line": line, "col": col, "end": end, "role": role})
+
+    def _ref_token(self, node_id: str | None, expr: ast.AST, role: str) -> None:
+        """Mark the token that names a node: a Name, or the attribute part of ``a.b.c``."""
+        if isinstance(expr, ast.Name):
+            self._ref(node_id, expr.lineno, expr.col_offset, expr.end_col_offset, role)
+        elif isinstance(expr, ast.Attribute) and expr.end_lineno is not None:
+            width = len(expr.attr.encode("utf-8"))
+            self._ref(node_id, expr.end_lineno, expr.end_col_offset - width, expr.end_col_offset, role)
+
+    def _ref_def(self, node_id: str, st: ast.AST) -> None:
+        """Mark the name in ``def name`` / ``class name``."""
+        text = self.lines[st.lineno - 1] if 1 <= st.lineno <= len(self.lines) else ""
+        start = len(text.encode("utf-8")[:st.col_offset].decode("utf-8", "ignore"))
+        m = _DEF_NAME.match(text, start)
+        if not m:
+            return
+        col = len(text[:m.start(1)].encode("utf-16-le")) // 2
+        end = len(text[:m.end(1)].encode("utf-16-le")) // 2
+        self.refs.setdefault((node_id, st.lineno, col, end, "def"),
+                             {"node": node_id, "line": st.lineno, "col": col, "end": end, "role": "def"})
+
+    # ----- conditions ---------------------------------------------------------------
+
+    def _guard(self, target: str | None, line: int) -> None:
+        """Connect the conditions that decide whether ``target`` happens to it."""
+        if target is None:
+            return
+        for src in sorted(set().union(*self.ctrl)) if self.ctrl else ():
+            self._edge(src, target, "control", line)
 
     def _unsupported(self, kind: str, line: int, scope: Scope, detail: str, node_id: str | None = None) -> None:
         item = self.unsupported.setdefault((kind, scope.qualname, detail), Unsupported(kind, scope.qualname, detail))
@@ -272,10 +345,12 @@ class _Analyzer:
             scope.self_name = positional.pop(0).arg
             scope.locals.add(scope.self_name)
 
+        self._ref_def(nid, node)
         info = FuncInfo()
         for arg in [*positional, *args.kwonlyargs]:
             pid = f"var:{qual}:{arg.arg}"
             self._add_node(pid, arg.arg, "parameter", qual, arg.lineno)
+            self._ref(pid, arg.lineno, arg.col_offset, arg.col_offset + len(arg.arg.encode("utf-8")), "def")
             scope.locals.add(arg.arg)
             info.by_name[arg.arg] = pid
             if arg in positional:
@@ -285,6 +360,7 @@ class _Analyzer:
                 continue
             pid = f"var:{qual}:{star.arg}"
             self._add_node(pid, star.arg, "parameter", qual, star.lineno)
+            self._ref(pid, star.lineno, star.col_offset, star.col_offset + len(star.arg.encode("utf-8")), "def")
             scope.locals.add(star.arg)
             if prefix == "*":
                 info.vararg = pid
@@ -312,6 +388,7 @@ class _Analyzer:
         parent.defs[node.name] = nid
 
         scope = Scope(qual, "class", nid, parent, bases=list(node.bases))
+        self._ref_def(nid, node)
         self.scopes[id(node)] = scope
         self.class_scopes[nid] = scope
         self._declare_body(node.body, scope)
@@ -322,6 +399,7 @@ class _Analyzer:
         for stmt in node.body:
             if isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name):
                 fid = self._var(scope, stmt.target.id, stmt.lineno)
+                self._ref_token(fid, stmt.target, "def")
                 info.positional.append(fid)
                 info.by_name[stmt.target.id] = fid
         self.funcinfo[nid] = info
@@ -487,21 +565,38 @@ class _Analyzer:
     # ----- pass 2: statements -----------------------------------------------------
 
     def _visit_body(self, body: list[ast.stmt], scope: Scope) -> None:
+        pushed = 0
         for stmt in body:
-            self._visit_stmt(stmt, scope)
+            guard = self._visit_stmt(stmt, scope)
+            if guard:  # `if bad: return` guards everything after it in this block
+                self.ctrl.append(guard)
+                pushed += 1
+        if pushed:
+            del self.ctrl[-pushed:]
 
-    def _visit_stmt(self, st: ast.stmt, scope: Scope) -> None:
+    def _in_condition(self, sources: set[str], body: list[ast.stmt], scope: Scope) -> None:
+        """Visit ``body`` as code that only runs depending on ``sources``."""
+        self.ctrl.append(sources)
+        self._visit_body(body, scope)
+        self.ctrl.pop()
+
+    def _visit_stmt(self, st: ast.stmt, scope: Scope) -> set[str] | None:
+        """Visit one statement. Returns condition sources that guard the rest of the block."""
         line = st.lineno
         if isinstance(st, (ast.FunctionDef, ast.AsyncFunctionDef)):
             inner = self.scopes[id(st)]
             for dec in st.decorator_list:
                 self._sources(dec, scope)
             self._bind_defaults(st, scope, inner)
+            saved, self.ctrl = self.ctrl, []  # a function body is not guarded by where it is defined
             self._visit_body(st.body, inner)
+            self.ctrl = saved
         elif isinstance(st, ast.ClassDef):
             for expr in [*st.decorator_list, *st.bases, *(k.value for k in st.keywords)]:
                 self._sources(expr, scope)
+            saved, self.ctrl = self.ctrl, []
             self._visit_body(st.body, self.scopes[id(st)])
+            self.ctrl = saved
         elif isinstance(st, ast.Assign):
             for target in st.targets:
                 self._assign(target, st.value, scope, line)
@@ -516,9 +611,12 @@ class _Analyzer:
             sources = self._sources(st.value, scope)
             if scope.kind == "function":
                 self._flow(sources, scope.node_id, "return", line)
+                self._guard(scope.node_id, line)
         elif isinstance(st, (ast.For, ast.AsyncFor)):
-            self._assign(st.target, st.iter, scope, line)
-            self._visit_body(st.body, scope)
+            # What the loop body does depends on what it iterates over.
+            iterated = self._sources(st.iter, scope)
+            self._bind(st.target, iterated, scope, line)
+            self._in_condition(iterated, st.body, scope)
             self._visit_body(st.orelse, scope)
         elif isinstance(st, (ast.With, ast.AsyncWith)):
             for item in st.items:
@@ -528,11 +626,12 @@ class _Analyzer:
                     self._sources(item.context_expr, scope)
             self._visit_body(st.body, scope)
         elif isinstance(st, (ast.If, ast.While)):
-            # Conditions are evaluated (calls inside them count) but control
-            # dependence is not drawn as data flow.
-            self._sources(st.test, scope)
-            self._visit_body(st.body, scope)
-            self._visit_body(st.orelse, scope)
+            # Everything inside runs only depending on the test: draw it as control edges.
+            test = self._sources(st.test, scope)
+            self._in_condition(test, st.body, scope)
+            self._in_condition(test, st.orelse, scope)
+            if isinstance(st, ast.If) and (_ends_block(st.body) or _ends_block(st.orelse)):
+                return test
         elif isinstance(st, _TRY_NODES):
             self._visit_body(st.body, scope)
             for handler in st.handlers:
@@ -544,10 +643,9 @@ class _Analyzer:
             self._visit_body(st.finalbody, scope)
         elif isinstance(st, ast.Match):
             self._unsupported("match", line, scope, "match/case patterns")
-            self._sources(st.subject, scope)
+            subject = self._sources(st.subject, scope)
             for case in st.cases:
-                self._sources(case.guard, scope)
-                self._visit_body(case.body, scope)
+                self._in_condition(subject | self._sources(case.guard, scope), case.body, scope)
         elif isinstance(st, ast.ImportFrom):
             if any(alias.name == "*" for alias in st.names):
                 self._unsupported("star_import", line, scope, f"from {st.module} import *")
@@ -558,6 +656,7 @@ class _Analyzer:
             for child in ast.iter_child_nodes(st):
                 if isinstance(child, ast.expr):
                     self._sources(child, scope)
+        return None
 
     def _bind_defaults(self, fn: ast.FunctionDef | ast.AsyncFunctionDef, outer: Scope, inner: Scope) -> None:
         """Default values are evaluated in the enclosing scope and flow into the parameter.
@@ -587,15 +686,21 @@ class _Analyzer:
             for t, v in zip(target.elts, value.elts):
                 self._assign(t, v, scope, line)
             return
-        self._bind(target, self._sources(value, scope), scope, line)
+        sources = self._sources(value, scope)
+        self._bind(target, sources, scope, line, self.constructed.get(id(value)))
 
-    def _bind(self, target: ast.expr, sources: set[str], scope: Scope, line: int) -> None:
-        """Connect ``sources`` to every name bound by ``target``."""
+    def _bind(self, target: ast.expr, sources: set[str], scope: Scope, line: int, instance: str | None = None) -> None:
+        """Connect ``sources`` to every name bound by ``target``.
+
+        ``instance`` is the class id when the value is a freshly built object (``x = Cart()``).
+        """
         if isinstance(target, ast.Name):
             tid = self._store(target.id, scope, line)
             self._flow(sources, tid, "assign", line)
-            if tid and len(sources) == 1 and next(iter(sources)) in self.class_scopes:
-                self.instance_of[tid] = next(iter(sources))  # x = SomeClass(...)
+            self._guard(tid, line)
+            self._ref_token(tid, target, "write")
+            if tid and instance:
+                self.instance_of[tid] = instance  # x = SomeClass(...)
         elif isinstance(target, (ast.Tuple, ast.List)):
             # a, b = f(): without knowing the shape, every element may get every source.
             for elt in target.elts:
@@ -607,11 +712,14 @@ class _Analyzer:
             extra = self._sources(target.slice, scope) if isinstance(target, ast.Subscript) else set()
             if isinstance(target, ast.Attribute) and self._receiver_class(target.value, scope):
                 container = self._attribute(self._receiver_class(target.value, scope), target.attr, line)
+                self._ref_token(container, target, "write")
             else:
                 container = self._container(target, scope)
+                self._ref_token(container, _root_node(target), "write")
             self._flow(sources | extra, container, "assign", line)
-            if container and len(sources) == 1 and next(iter(sources)) in self.class_scopes:
-                self.instance_of[container] = next(iter(sources))  # self.cart = Cart()
+            self._guard(container, line)
+            if container and instance:
+                self.instance_of[container] = instance  # self.cart = Cart()
 
     # ----- expressions ------------------------------------------------------------
 
@@ -629,12 +737,14 @@ class _Analyzer:
                 nid = self._lookup(expr.id, scope)
                 if nid and nid.startswith("var:"):
                     out.add(nid)
+                if nid:
+                    self._ref_token(nid, expr, "read")
             return out
         if isinstance(expr, ast.Call):
             return self._call(expr, scope, bound)
         if isinstance(expr, ast.NamedExpr):
             sources = self._sources(expr.value, scope, bound)
-            self._bind(expr.target, sources, scope, expr.lineno)
+            self._bind(expr.target, sources, scope, expr.lineno, self.constructed.get(id(expr.value)))
             nid = self._lookup(expr.target.id, scope)
             return {nid} if nid else sources
         if isinstance(expr, ast.Lambda):
@@ -659,11 +769,13 @@ class _Analyzer:
             cls = self._receiver_class(expr.value, scope, bound)
             if cls:
                 nid = self._attribute(cls, expr.attr)
+                self._ref_token(nid, expr, "read")
                 return {nid} if nid else out
             # self.cart.items: attribute of an attribute whose class is known.
             inner = self._sources(expr.value, scope, bound)
             if len(inner) == 1 and next(iter(inner)) in self.instance_of:
                 nid = self._attribute(self.instance_of[next(iter(inner))], expr.attr)
+                self._ref_token(nid, expr, "read")
                 return {nid} if nid else inner
             return inner
         for child in ast.iter_child_nodes(expr):
@@ -682,25 +794,37 @@ class _Analyzer:
         if callee is not None:
             # Defined in this file: map each argument onto the matching parameter.
             self._edge(caller, callee, "call", line)
+            self._guard(callee, line)
+            self._ref_token(callee, func, "call")
             info = self._callee_info(callee)
+            passed: set[str] = set()
             for index, arg in enumerate(call.args):
                 if isinstance(arg, ast.Starred):
                     self._unsupported("star_args", line, scope, f"*{_call_name(arg.value)} passed to {func_label(callee)}")
                     self._sources(arg.value, scope, bound)
                     continue
-                self._flow(self._sources(arg, scope, bound), info.at(index), "arg", line)
+                sources = self._sources(arg, scope, bound)
+                passed |= sources
+                self._flow(sources, info.at(index), "arg", line)
             for kw in call.keywords:
                 sources = self._sources(kw.value, scope, bound)
                 if kw.arg is None:
                     self._unsupported("star_args", line, scope, f"**{_call_name(kw.value)} passed to {func_label(callee)}")
                     continue
+                passed |= sources
                 self._flow(sources, info.named(kw.arg), "arg", line)
+            # An object is built from its constructor arguments, so it depends on them.
+            if callee in self.class_scopes:
+                self.constructed[id(call)] = callee
+                return {callee} | passed
             return {callee}
 
         # Library, builtin or method on an object: the arguments (and the
         # receiver, for obj.method()) flow into the call and through to its result.
         ext = self._external(_call_name(func))
         self._edge(caller, ext, "call", line)
+        self._guard(ext, line)
+        self._ref_token(ext, func, "call")
         sources = self._sources(func, scope, bound) if not isinstance(func, ast.Name) else set()
         for arg in call.args:
             sources |= self._sources(arg.value if isinstance(arg, ast.Starred) else arg, scope, bound)
@@ -733,23 +857,25 @@ def func_label(node_id: str) -> str:
 def analyze(source: str, filename: str = "<input>") -> dict:
     """Analyze Python source code and return a JSON-serializable graph.
 
-    Returns a dict with keys ``filename``, ``nodes``, ``edges``,
-    ``unsupported``, ``stats`` and ``error`` (None, or ``{"message", "line"}``
-    when the source cannot be parsed).
+    Returns a dict with keys ``schema``, ``filename``, ``nodes``, ``edges``,
+    ``unsupported``, ``refs``, ``stats`` and ``error`` (None, or
+    ``{"message", "line"}`` when the source cannot be parsed).
     """
-    result = {"filename": filename, "nodes": [], "edges": [], "unsupported": [], "stats": {}, "error": None}
+    result = {"schema": 2, "filename": filename, "nodes": [], "edges": [], "unsupported": [], "refs": [],
+              "stats": {}, "error": None}
     try:
         tree = ast.parse(source, filename)
     except SyntaxError as exc:
         result["error"] = {"message": exc.msg, "line": exc.lineno}
         return result
 
-    analyzer = _Analyzer()
+    analyzer = _Analyzer(source)
     analyzer.run(tree)
 
     result["nodes"] = [asdict(n) for n in analyzer.nodes.values()]
     result["edges"] = [asdict(e) for e in analyzer.edges.values()]
     result["unsupported"] = [asdict(u) for u in analyzer.unsupported.values()]
+    result["refs"] = sorted(analyzer.refs.values(), key=lambda r: (r["line"], r["col"], r["node"]))
     kinds = [n.kind for n in analyzer.nodes.values()]
     result["stats"] = {
         "lines": len(source.splitlines()),

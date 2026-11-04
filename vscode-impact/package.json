@@ -1,0 +1,197 @@
+{
+  "name": "pyflow",
+  "displayName": "pyflow: Change Impact for Python",
+  "description": "Put the cursor on a variable and see everything that changes if its value changes. Runs locally, no setup.",
+  "version": "0.1.0",
+  "publisher": "archi9882",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Visualization",
+    "Other"
+  ],
+  "keywords": [
+    "python",
+    "impact analysis",
+    "data flow",
+    "refactoring",
+    "static analysis",
+    "call graph",
+    "dependency"
+  ],
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#12161b",
+    "theme": "dark"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/archi9882/SciML.git",
+    "directory": "pyflow/vscode-impact"
+  },
+  "main": "./out/src/extension.js",
+  "activationEvents": [
+    "onLanguage:python"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "pyflow.showImpact",
+        "title": "%command.showImpact%",
+        "category": "pyflow"
+      },
+      {
+        "command": "pyflow.showGraph",
+        "title": "%command.showGraph%",
+        "category": "pyflow"
+      },
+      {
+        "command": "pyflow.clear",
+        "title": "%command.clear%",
+        "category": "pyflow"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "pyflow.showImpact",
+        "key": "ctrl+alt+i",
+        "mac": "ctrl+alt+i",
+        "when": "editorTextFocus && editorLangId == python"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "pyflow.showImpact",
+          "when": "editorLangId == python",
+          "group": "navigation@100"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "pyflow.showGraph",
+          "when": "pyflow.hasResult"
+        },
+        {
+          "command": "pyflow.clear",
+          "when": "pyflow.hasResult"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "pyflow.showGraph",
+          "when": "view == pyflow.impact",
+          "group": "navigation"
+        },
+        {
+          "command": "pyflow.clear",
+          "when": "view == pyflow.impact",
+          "group": "navigation"
+        }
+      ]
+    },
+    "views": {
+      "explorer": [
+        {
+          "id": "pyflow.impact",
+          "name": "%view.impact%",
+          "when": "pyflow.hasResult"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "pyflow.impact",
+        "contents": "%view.welcome%"
+      }
+    ],
+    "configuration": {
+      "title": "pyflow",
+      "properties": {
+        "pyflow.pythonPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "%config.pythonPath%"
+        },
+        "pyflow.includeConditions": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "%config.includeConditions%"
+        },
+        "pyflow.maxGraphNodes": {
+          "type": "number",
+          "default": 150,
+          "minimum": 20,
+          "markdownDescription": "%config.maxGraphNodes%"
+        }
+      }
+    },
+    "colors": [
+      {
+        "id": "pyflow.sourceBackground",
+        "description": "Background of the name you asked about.",
+        "defaults": {
+          "dark": "#3b82f666",
+          "light": "#2563eb44",
+          "highContrast": "#3b82f6aa",
+          "highContrastLight": "#2563ebaa"
+        }
+      },
+      {
+        "id": "pyflow.affectedBackground",
+        "description": "Background of a place where the change arrives through data.",
+        "defaults": {
+          "dark": "#2dd4a355",
+          "light": "#0f9f7a44",
+          "highContrast": "#2dd4a3aa",
+          "highContrastLight": "#0f9f7aaa"
+        }
+      },
+      {
+        "id": "pyflow.conditionBackground",
+        "description": "Background of a place that changes only through a condition (if, loop, guard).",
+        "defaults": {
+          "dark": "#a78bfa55",
+          "light": "#7c3aed40",
+          "highContrast": "#a78bfaaa",
+          "highContrastLight": "#7c3aedaa"
+        }
+      },
+      {
+        "id": "pyflow.effectBackground",
+        "description": "Background of output or a side effect (print, write, send, log).",
+        "defaults": {
+          "dark": "#fb923c66",
+          "light": "#ea580c44",
+          "highContrast": "#fb923caa",
+          "highContrastLight": "#ea580caa"
+        }
+      },
+      {
+        "id": "pyflow.lineBackground",
+        "description": "Faint background of a whole line where the change arrives.",
+        "defaults": {
+          "dark": "#2dd4a314",
+          "light": "#0f9f7a12",
+          "highContrast": "#00000000",
+          "highContrastLight": "#00000000"
+        }
+      }
+    ]
+  },
+  "scripts": {
+    "prepare-assets": "node scripts/prepare.mjs",
+    "compile": "tsc -p .",
+    "test": "npm run compile && node --test \"out/test/*.test.js\"",
+    "package": "npm run prepare-assets && npm run compile && vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "20.19.43",
+    "@types/vscode": "1.85.0",
+    "@vscode/vsce": "3.6.0",
+    "typescript": "5.6.3"
+  }
+}

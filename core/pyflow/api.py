@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 
 from .analyzer import analyze
-from .graph import function_inside, overview, search, subgraph
+from .graph import function_inside, impact, overview, search, subgraph
 
 _state: dict = {"graph": None}
 
@@ -37,6 +37,11 @@ def inside(center: str, families: str) -> str:
     """A function with its parameters and locals, drawn as a box; see ``graph.function_inside``."""
     fams = tuple(f for f in families.split(",") if f)
     return json.dumps(function_inside(_state["graph"], center, fams))
+
+
+def impact_of(center: str, depth: int, control: bool, max_nodes: int) -> str:
+    """What changes if ``center`` changes. ``depth`` 0 means no limit, ``max_nodes`` 0 means all."""
+    return json.dumps(impact(_state["graph"], center, depth or None, bool(control), max_nodes or None))
 
 
 def whole_file() -> str:

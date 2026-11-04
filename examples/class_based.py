@@ -1,6 +1,7 @@
 """Class-based style: a shopping cart with a dataclass and methods.
 
-Try searching for: items, discount_rate, Product.price, checkout
+Start with: Product.price
+Try searching for: items, discount_rate, checkout
 Values stored on ``self`` are tracked as attributes: follow ``price`` from
 ``checkout`` through ``Cart.add`` into ``self.items`` and out of ``total``.
 """

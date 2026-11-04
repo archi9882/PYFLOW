@@ -1,5 +1,6 @@
 """Data-processing pipeline: load -> clean -> transform -> aggregate -> report.
 
+Start with: RAW_CSV
 Try searching for: records, clean, by_city, rows
 It also contains constructs pyflow reports as unsupported:
 a decorator that may change the signature, *args, and getattr().

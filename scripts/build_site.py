@@ -14,6 +14,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -38,9 +39,13 @@ def build(out: Path) -> None:
     examples = sorted(p.name for p in (ROOT / "examples").glob("*.py"))
     ex_out = out / "examples"
     ex_out.mkdir()
+    index = []
     for name in examples:
         shutil.copy2(ROOT / "examples" / name, ex_out / name)
-    (ex_out / "index.json").write_text(json.dumps(examples), encoding="utf-8")
+        # A "Start with: NAME" line in the example's docstring is the name the page opens on.
+        match = re.search(r"^Start with: (.+)$", (ROOT / "examples" / name).read_text(encoding="utf-8"), re.M)
+        index.append({"name": name, "hero": match.group(1).strip() if match else None})
+    (ex_out / "index.json").write_text(json.dumps(index), encoding="utf-8")
 
     print("Vendoring libraries:")
     vendor(out / "vendor")

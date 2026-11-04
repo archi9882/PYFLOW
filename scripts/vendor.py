@@ -5,7 +5,8 @@ against the registry's published sha512 integrity hash, and only the files
 the page needs are extracted. Downloads are cached in ``.vendor-cache/``.
 
 Usage:
-    python scripts/vendor.py OUT_DIR      # copy vendored files into OUT_DIR
+    python scripts/vendor.py OUT_DIR                          # everything the web page needs
+    python scripts/vendor.py OUT_DIR --only cytoscape dagre   # just some packages (the VS Code extension)
 """
 
 from __future__ import annotations
@@ -64,9 +65,11 @@ def _tarball(name: str, version: str) -> bytes:
     return data
 
 
-def vendor(out: Path) -> None:
-    """Extract every needed library file into ``out``."""
+def vendor(out: Path, only: list[str] | None = None) -> None:
+    """Extract the needed library files into ``out`` (all packages, or just those named in ``only``)."""
     for name, version, files in PACKAGES:
+        if only and name not in only:
+            continue
         print(f"  {name}@{version}")
         with tarfile.open(fileobj=io.BytesIO(_tarball(name, version)), mode="r:gz") as tar:
             for inner, dest in files.items():
@@ -79,4 +82,7 @@ def vendor(out: Path) -> None:
 
 
 if __name__ == "__main__":
-    vendor(Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "_site" / "vendor")
+    args = sys.argv[1:]
+    only = args[args.index("--only") + 1:] if "--only" in args else None
+    target = Path(args[0]) if args and args[0] != "--only" else ROOT / "_site" / "vendor"
+    vendor(target, only)
