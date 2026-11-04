@@ -162,7 +162,11 @@ class Controller {
       if (ext) {
         const api = await ext.activate();
         const env = api?.environments?.getActiveEnvironmentPath?.(resource);
-        if (env?.path) return env.path as string;
+        // The Python extension can remember an interpreter that has since been uninstalled, so check it runs.
+        if (env?.path) {
+          const usable = await probePython(env.path as string);
+          if (usable) return usable;
+        }
       }
     } catch { /* the Python extension is optional; fall through */ }
     // On Windows plain `python` may be the Store stub, so try the Python Launcher first and verify each candidate.
