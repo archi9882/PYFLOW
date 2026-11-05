@@ -167,6 +167,41 @@ test("the full view loads the web page and receives the open Python file", async
   panel.send({ type: "ready" }); // the page is listening: the current file goes in
   const sent = fake.log.posted.find((m) => m.type === "file");
   assert.deepEqual([sent.name, sent.text === SOURCE], ["demo.py", true]);
+  assert.deepEqual(sent.focus, { line: 1, col: 10 }); // 游標位置（行 1 起算）隨檔案一起送出
+  fake.log.posted.length = 0;
   await fake.handlers.get("pyflow.openFull")!(); // a second run brings the same panel back
   assert.equal(panel.revealed, 1);
+  assert.deepEqual(fake.log.posted.find((m) => m.type === "file")?.focus, { line: 1, col: 10 }); // 再執行一次會重新帶入
+});
+
+test("the full view follows the cursor, and resends the file when it has unsaved changes", async () => {
+  const { fake } = setup();
+  const editor = makeEditor(SOURCE, 0, 10);
+  fake.state.active = editor; fake.state.visible = [editor];
+  await fake.handlers.get("pyflow.openFull")!();
+  const panel = fake.log.panels.at(-1);
+  panel.send({ type: "ready" });
+  const wait = () => new Promise((r) => setTimeout(r, 320));
+  const move = (line: number, character: number) => {
+    editor.selection = { active: new Position(line, character) };
+    fake.events.selection.fire({ textEditor: editor });
+  };
+
+  fake.log.posted.length = 0;
+  move(3, 4); move(3, 5); // quick moves count once, at the last place
+  await wait();
+  assert.deepEqual(fake.log.posted, [{ type: "cursor", focus: { line: 4, col: 5 } }]);
+
+  fake.log.posted.length = 0;
+  editor.document.version = 2; // typed since the page got the text: line numbers may differ
+  move(4, 0);
+  await wait();
+  assert.equal(fake.log.posted.length, 1);
+  assert.deepEqual([fake.log.posted[0].type, fake.log.posted[0].focus], ["file", { line: 5, col: 0 }]);
+
+  fake.log.posted.length = 0;
+  fake.state.active = makeEditor(SOURCE, 0, 0, "other.py"); // some other editor is active: leave the page alone
+  move(1, 1);
+  await wait();
+  assert.deepEqual(fake.log.posted, []);
 });

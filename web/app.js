@@ -443,9 +443,10 @@ async function startPython() {
     setStatus("status.ready");
     showEmpty("empty.ready");
     if (state.pendingFile) {
-      const { name, text } = state.pendingFile;
+      const { name, text, focus } = state.pendingFile;
       state.pendingFile = null;
       loadSource(text, name);
+      focusAtCursor(focus);
     } else {
       await loadDefaultExample();
     }
@@ -550,6 +551,8 @@ function listenToEditor() {
   if (!VSCODE) return;
   window.addEventListener("message", (ev) => {
     const msg = ev.data;
+    // 只有游標移動（檔案沒變）：直接改問游標所在的名稱
+    if (msg && msg.type === "cursor") { focusAtCursor(msg.focus); return; }
     if (!msg || msg.type !== "file") return;
     if (msg.text.length > MAX_BYTES) { $("#file-info").textContent = t("file.big"); return; }
     // Re-sent after a save: keep looking at the same node if it still exists.
@@ -557,7 +560,11 @@ function listenToEditor() {
     state.editorPath = msg.path;
     $("#example-select").value = "";
     loadSource(msg.text, msg.name);
-    if (keep && state.nodesById.has(keep)) {
+    if (msg.focus) {
+      // 指令帶入游標位置：Python 尚未載入時先記著，載入後再套用
+      if (state.pendingFile) state.pendingFile.focus = msg.focus;
+      else focusAtCursor(msg.focus);
+    } else if (keep && state.nodesById.has(keep)) {
       $("#search").value = qualified(state.nodesById.get(keep));
       focusNode(keep);
     }
@@ -568,6 +575,15 @@ function listenToEditor() {
   const refresh = $("#refresh-btn");
   refresh.hidden = false;
   refresh.addEventListener("click", () => VSCODE.postMessage({ type: "refresh" }));
+}
+
+// 編輯器游標所在的名稱（行為 1 起算，欄為 UTF-16）：找到就問它的影響，找不到維持總覽。
+function focusAtCursor(focus) {
+  if (!state.graph || state.graph.error || !focus) return;
+  const node = tokenAt(focus.line, focus.col);
+  if (!node) return;
+  $("#search").value = qualified(node);
+  focusNode(node.id);
 }
 
 // Open on the link's example if there is one, else on the class example.

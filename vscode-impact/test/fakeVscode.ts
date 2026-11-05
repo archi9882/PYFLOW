@@ -53,7 +53,7 @@ export function createFake(language = "en") {
   const log = { contexts: [] as [string, unknown][], messages: [] as [string, string][], statusMessages: [] as string[], panels: [] as any[], posted: [] as any[] };
   const config: Record<string, unknown> = { pythonPath: process.env.PYFLOW_TEST_PYTHON || "python3", includeConditions: true, maxGraphNodes: 150 };
   const events = {
-    visible: new EventEmitter<void>(), change: new EventEmitter<any>(), close: new EventEmitter<any>(), active: new EventEmitter<any>(), save: new EventEmitter<any>(),
+    visible: new EventEmitter<void>(), change: new EventEmitter<any>(), close: new EventEmitter<any>(), active: new EventEmitter<any>(), save: new EventEmitter<any>(), selection: new EventEmitter<any>(),
   };
   const state = { active: undefined as FakeEditor | undefined, visible: [] as FakeEditor[], hover: undefined as any, tree: undefined as any, treeViews: [] as any[], status: [] as any[] };
   let decoKey = 0;
@@ -82,7 +82,7 @@ export function createFake(language = "en") {
     window: {
       get activeTextEditor() { return state.active; },
       get visibleTextEditors() { return state.visible; },
-      onDidChangeVisibleTextEditors: events.visible.event, onDidChangeActiveTextEditor: events.active.event,
+      onDidChangeVisibleTextEditors: events.visible.event, onDidChangeActiveTextEditor: events.active.event, onDidChangeTextEditorSelection: events.selection.event,
       createTextEditorDecorationType: (opts: unknown) => ({ key: `deco${decoKey++}`, opts, dispose() { /* nothing */ } }),
       createTreeView(id: string, o: { treeDataProvider: unknown }) {
         const view = { id, provider: o.treeDataProvider, title: "", description: "", dispose() { /* nothing */ } };
