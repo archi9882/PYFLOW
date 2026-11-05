@@ -147,6 +147,8 @@ class Controller {
     }
     this.result = { uri: doc.uri.toString(), version: doc.version, impact: outcome.impact };
     this.show();
+    // 同時開（或帶回）與網頁相同的完整視圖，游標所在的變數會帶進去
+    await vscode.commands.executeCommand("pyflow.openFull");
   }
 
   private async offerSettings(message: string): Promise<void> {

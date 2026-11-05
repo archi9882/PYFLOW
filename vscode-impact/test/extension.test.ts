@@ -129,8 +129,11 @@ test("every way to open the graph opens the full view, the same page as the web 
   assert.equal(fake.log.panels.length, 1);
   assert.equal(fake.log.panels[0].id, "pyflow.full");
 
-  await fake.handlers.get("pyflow.showImpact")!();
   assert.equal(fake.state.status[0].command, "pyflow.openFull");
+
+  // 「如果改變它…」也會開完整視圖（同一個面板，不會多開）
+  await fake.handlers.get("pyflow.showImpact")!();
+  assert.equal(fake.log.panels.length, 1);
 });
 
 test("Chinese UI strings are used when VS Code runs in Chinese", async () => {
