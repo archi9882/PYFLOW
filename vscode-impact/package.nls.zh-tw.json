@@ -1,11 +1,9 @@
 {
   "command.showImpact": "如果它改變，會影響哪裡？",
-  "command.showGraph": "顯示影響圖",
   "command.clear": "清除影響標記",
   "command.openFull": "開啟完整視圖（與網頁相同）",
   "view.impact": "pyflow 影響",
   "view.welcome": "把游標放在 Python 檔的變數或函式上，執行 **pyflow：如果它改變，會影響哪裡？**（Ctrl+Alt+I）。",
   "config.pythonPath": "執行分析用的 Python（3.10 以上）。留空則使用 Python 擴充套件選取的直譯器，或 PATH 上的 `python3`／`python`。",
-  "config.includeConditions": "同時追蹤條件：在 `if x: y = 1` 中，即使沒有值從 x 傳到 y，改變 x 也可能改變 y。僅經由條件的結果會另外標示。",
-  "config.maxGraphNodes": "圖上最多畫幾個節點。清單與編輯器標記一律涵蓋所有受影響的地方。"
+  "config.includeConditions": "同時追蹤條件：在 `if x: y = 1` 中，即使沒有值從 x 傳到 y，改變 x 也可能改變 y。僅經由條件的結果會另外標示。"
 }

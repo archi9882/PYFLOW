@@ -51,7 +51,7 @@ export function makeEditor(text: string, line: number, character: number, name =
 export function createFake(language = "en") {
   const handlers = new Map<string, (...a: any[]) => unknown>();
   const log = { contexts: [] as [string, unknown][], messages: [] as [string, string][], statusMessages: [] as string[], panels: [] as any[], posted: [] as any[] };
-  const config: Record<string, unknown> = { pythonPath: process.env.PYFLOW_TEST_PYTHON || "python3", includeConditions: true, maxGraphNodes: 150 };
+  const config: Record<string, unknown> = { pythonPath: process.env.PYFLOW_TEST_PYTHON || "python3", includeConditions: true };
   const events = {
     visible: new EventEmitter<void>(), change: new EventEmitter<any>(), close: new EventEmitter<any>(), active: new EventEmitter<any>(), save: new EventEmitter<any>(), selection: new EventEmitter<any>(),
   };

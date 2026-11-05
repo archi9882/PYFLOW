@@ -138,8 +138,7 @@ cd vscode-impact && npm ci && npm run prepare-assets && npm test    # 編輯器�
 ```
 core/pyflow/     分析器（ast -> 圖）、影響／搜尋／位置反查、命令列、網頁使用的介面
 web/             瀏覽器示範（Cytoscape.js + dagre）
-vscode-impact/   在編輯器內標出答案的 VS Code 擴充套件（TypeScript；透過 Python 呼叫分析器）
-vscode/          另一個擴充套件：在編輯器旁顯示網頁
+vscode-impact/   VS Code 擴充套件：在編輯器內標出答案，並在旁邊開啟網頁視圖（TypeScript）
 tests/           每條規則一個小程式，預期答案由人工推導
 examples/        四種風格：腳本、純函式、類別、資料管線
 scripts/         vendor.py（固定版本並驗證雜湊的函式庫）、build_site.py、serve.py

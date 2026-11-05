@@ -1,7 +1,7 @@
 {
   "name": "pyflow",
   "displayName": "pyflow: Change Impact for Python",
-  "description": "Put the cursor on a variable and see everything that changes if its value changes. Runs locally, no setup.",
+  "description": "Put the cursor on a variable and see everything that changes if its value changes. Marks the editor and opens the web view beside it (about 15 MB with the bundled Python runtime).",
   "version": "0.1.0",
   "publisher": "archi9882",
   "license": "MIT",
@@ -44,11 +44,6 @@
         "category": "pyflow"
       },
       {
-        "command": "pyflow.showGraph",
-        "title": "%command.showGraph%",
-        "category": "pyflow"
-      },
-      {
         "command": "pyflow.clear",
         "title": "%command.clear%",
         "category": "pyflow"
@@ -77,17 +72,13 @@
       ],
       "commandPalette": [
         {
-          "command": "pyflow.showGraph",
-          "when": "false"
-        },
-        {
           "command": "pyflow.clear",
           "when": "pyflow.hasResult"
         }
       ],
       "view/title": [
         {
-          "command": "pyflow.showGraph",
+          "command": "pyflow.openFull",
           "when": "view == pyflow.impact",
           "group": "navigation"
         },
@@ -125,12 +116,6 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "%config.includeConditions%"
-        },
-        "pyflow.maxGraphNodes": {
-          "type": "number",
-          "default": 150,
-          "minimum": 20,
-          "markdownDescription": "%config.maxGraphNodes%"
         }
       }
     },

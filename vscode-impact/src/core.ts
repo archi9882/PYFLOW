@@ -116,8 +116,7 @@ const STRINGS: Record<string, Record<string, string>> = {
     noPython: "Could not start Python ({path}). Install Python 3.10+ or choose one in the settings.",
     crash: "pyflow could not analyze this file: {message}",
     openSettings: "Open settings", staleHint: "The file changed, so the marks were cleared. Run the command again.",
-    running: "pyflow: analyzing...", more: "Showing the nearest {shown} of {total} in the graph.",
-    noResult: "Run \"What changes if this changes?\" on a name first.",
+    running: "pyflow: analyzing...",
     statusTip: "Click to show the impact graph",
   },
   zh: {
@@ -136,8 +135,7 @@ const STRINGS: Record<string, Record<string, string>> = {
     noPython: "無法啟動 Python（{path}）。請安裝 Python 3.10 以上，或在設定中選擇。",
     crash: "pyflow 無法分析此檔案：{message}",
     openSettings: "開啟設定", staleHint: "檔案已變更，標記已清除。請再執行一次指令。",
-    running: "pyflow：分析中...", more: "圖上只畫最近的 {shown} 個（共 {total} 個）。",
-    noResult: "請先對某個名稱執行「如果它改變，會影響哪裡？」。",
+    running: "pyflow：分析中...",
     statusTip: "點擊顯示影響圖",
   },
 };
@@ -225,21 +223,4 @@ export function explain(impact: Impact, line: number, col: number, lang: "en" | 
   const lines = [`**${displayName(node)}**`, pathText(impact, node)];
   if (node.influence === "condition") lines.push(`_${tr(lang, "condition")}_`);
   return lines.join("\n\n");
-}
-
-// ---------------------------------------------------------------- graph data for the webview
-
-// Few enough nodes to read: the nearest ones. Big results draw one parent edge per node (a tree).
-export function graphPayload(impact: Impact, maxNodes: number): { nodes: ImpactNode[]; edges: Edge[]; truncated: boolean; total: number } {
-  const nodes = impact.nodes.slice(0, maxNodes + 1);
-  const keep = new Set(nodes.map((n) => n.id));
-  let edges = impact.edges.filter((e) => keep.has(e.source) && keep.has(e.target));
-  if (nodes.length > 40) {
-    const parents = new Set(nodes.slice(1).flatMap((n) => {
-      const s = n.path[n.path.length - 1];
-      return s ? [`${s.from}|${s.to}|${s.kind}`] : [];
-    }));
-    edges = edges.filter((e) => parents.has(`${e.source}|${e.target}|${e.kind}`));
-  }
-  return { nodes, edges, truncated: impact.nodes.length - 1 > maxNodes || impact.truncated, total: impact.summary.total };
 }

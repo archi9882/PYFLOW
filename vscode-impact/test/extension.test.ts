@@ -33,7 +33,7 @@ const SOURCE = [
 
 test("registers its commands, view context and decoration types", () => {
   const { fake, context } = setup();
-  assert.deepEqual([...fake.handlers.keys()].sort(), ["pyflow.clear", "pyflow.openFull", "pyflow.reveal", "pyflow.showGraph", "pyflow.showImpact"]);
+  assert.deepEqual([...fake.handlers.keys()].sort(), ["pyflow.clear", "pyflow.openFull", "pyflow.reveal", "pyflow.showImpact"]);
   assert.ok(context.subscriptions.length >= 8);
   assert.ok(fake.state.hover && fake.state.tree);
 });
@@ -119,19 +119,17 @@ test("each problem gets a message that says what to do", async () => {
   assert.deepEqual(fake.log.messages.at(-1), ["info", "pyflow works on Python files."]);
 });
 
-test("every way to open the graph opens the full view, the same page as the web version", async () => {
+test("the status bar item and 'what changes' both open the full view, the same page as the web version", async () => {
   const { fake } = setup();
   const editor = makeEditor(SOURCE, 0, 10);
   fake.state.active = editor; fake.state.visible = [editor];
 
-  // 沒有先跑分析也能開（完整視圖自己依游標問答案）；showGraph 指令與狀態列都走同一條路
-  await fake.handlers.get("pyflow.showGraph")!();
+  await fake.handlers.get("pyflow.showImpact")!();
+  assert.equal(fake.state.status[0].command, "pyflow.openFull");
   assert.equal(fake.log.panels.length, 1);
   assert.equal(fake.log.panels[0].id, "pyflow.full");
 
-  assert.equal(fake.state.status[0].command, "pyflow.openFull");
-
-  // 「如果改變它…」也會開完整視圖（同一個面板，不會多開）
+  // 再執行一次不會多開面板
   await fake.handlers.get("pyflow.showImpact")!();
   assert.equal(fake.log.panels.length, 1);
 });

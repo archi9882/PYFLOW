@@ -1,13 +1,11 @@
 // VS Code wiring: runs the analyzer for the name under the cursor and shows the answer as
-// marks in the editor, a tree in the Explorer, hovers, a status bar item and a graph.
-import * as crypto from "crypto";
+// marks in the editor, a tree in the Explorer, hovers, a status bar item; the graph is the full view (fullView.ts).
 import * as path from "path";
 import * as vscode from "vscode";
 import {
-  decorationPlan, displayName, explain, graphPayload, Impact, langOf, summaryText, tr, treeModel, TreeGroup, TreeItem,
+  decorationPlan, displayName, explain, Impact, langOf, summaryText, tr, treeModel, TreeGroup, TreeItem,
 } from "./core";
 import { FullView } from "./fullView";
-import { graphHtml } from "./html";
 import { probePython, runAnalyzer } from "./runner";
 
 interface Result { uri: string; version: number; impact: Impact }
@@ -60,7 +58,6 @@ class ImpactTree implements vscode.TreeDataProvider<TreeNode> {
 class Controller {
   private result: Result | null = null;
   private run = 0; // newest request wins when the command is triggered twice quickly
-  private panel: vscode.WebviewPanel | undefined;
   private readonly lang = langOf(vscode.env.language);
   private readonly tree = new ImpactTree();
   private readonly treeView: vscode.TreeView<TreeNode>;
@@ -90,8 +87,6 @@ class Controller {
     subs.push(
       this.treeView, this.status, ...Object.values(this.types),
       vscode.commands.registerCommand("pyflow.showImpact", () => this.showImpact()),
-      // 所有開圖的入口都通往與網頁相同的完整視圖；輕量圖頁（showGraph 方法）不再有入口，待移除
-      vscode.commands.registerCommand("pyflow.showGraph", () => vscode.commands.executeCommand("pyflow.openFull")),
       vscode.commands.registerCommand("pyflow.clear", () => this.clear()),
       vscode.commands.registerCommand("pyflow.reveal", (uri: vscode.Uri, line: number) => this.reveal(uri, line)),
       vscode.languages.registerHoverProvider({ language: "python" }, { provideHover: (doc, pos) => this.hover(doc, pos) }),
@@ -196,7 +191,6 @@ class Controller {
     this.status.tooltip = `${this.t("ifChanges", { name })}\n${this.t("statusTip")}`;
     this.status.show();
     this.paintAll();
-    this.sendGraph();
     if (impact.warnings.length) {
       const what = impact.warnings.slice(0, 3).map((w) => `${w.detail} (L${w.lines[0]})`).join(", ");
       vscode.window.setStatusBarMessage(this.t("incomplete", { what }), 6000);
@@ -226,7 +220,6 @@ class Controller {
     void vscode.commands.executeCommand("setContext", "pyflow.hasResult", false);
     this.status.hide();
     this.paintAll();
-    this.panel?.dispose();
   }
 
   private hover(doc: vscode.TextDocument, pos: vscode.Position): vscode.Hover | null {
@@ -240,67 +233,6 @@ class Controller {
     const target = new vscode.Range(line - 1, 0, line - 1, 0);
     const editor = await vscode.window.showTextDocument(uri, { selection: target, preserveFocus: false });
     editor.revealRange(target, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
-  }
-
-  // ----- graph panel
-
-  async showGraph(): Promise<void> {
-    if (!this.result) {
-      void vscode.window.showInformationMessage(this.t("noResult"));
-      return;
-    }
-    if (this.panel) {
-      this.panel.reveal(vscode.ViewColumn.Beside, true);
-      this.sendGraph();
-      return;
-    }
-    const media = vscode.Uri.joinPath(this.context.extensionUri, "media");
-    const panel = vscode.window.createWebviewPanel("pyflow.graph", "pyflow", { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true }, {
-      enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [media],
-    });
-    this.panel = panel;
-    const uri = (...parts: string[]) => panel.webview.asWebviewUri(vscode.Uri.joinPath(media, ...parts)).toString();
-    panel.webview.html = graphHtml({
-      nonce: crypto.randomBytes(16).toString("hex"),
-      cspSource: panel.webview.cspSource,
-      scripts: {
-        cytoscape: uri("vendor", "cytoscape.min.js"), dagre: uri("vendor", "dagre.min.js"),
-        cytoscapeDagre: uri("vendor", "cytoscape-dagre.js"), graph: uri("graph.js"),
-      },
-      strings: this.pageStrings(),
-    });
-    panel.webview.onDidReceiveMessage((m: { type: string; line?: number }) => {
-      if (m.type === "ready") this.sendGraph();
-      if (m.type === "reveal" && m.line && this.result) void this.reveal(vscode.Uri.parse(this.result.uri), m.line);
-    });
-    panel.onDidDispose(() => { if (this.panel === panel) this.panel = undefined; });
-  }
-
-  private pageStrings(): Record<string, string> {
-    const zh = this.lang === "zh";
-    return {
-      flow: zh ? "切換由左至右／由上而下" : "Switch between left-to-right and top-to-bottom",
-      fit: zh ? "符合視窗" : "Fit",
-      aria: zh ? "影響圖" : "Impact graph",
-      legendSource: zh ? "你選的名稱" : "the name you picked",
-      legendData: zh ? "經由資料" : "through data",
-      legendCondition: zh ? "僅經由條件" : "only through a condition",
-      legendEffect: zh ? "輸出／副作用" : "output / side effect",
-    };
-  }
-
-  private sendGraph(): void {
-    const r = this.result;
-    if (!this.panel || !r) return;
-    const max = vscode.workspace.getConfiguration("pyflow").get<number>("maxGraphNodes", 150);
-    const data = graphPayload(r.impact, max);
-    const name = displayName(r.impact.nodes[0]);
-    const strings: Record<string, string> = {
-      title: `${this.t("ifChanges", { name })} · ${summaryText(r.impact, this.lang)}`,
-      note: data.truncated && data.nodes.length - 1 < data.total ? this.t("more", { shown: data.nodes.length - 1, total: data.total }) : "",
-      "edge.call": "", "edge.control": this.lang === "zh" ? "決定" : "decides",
-    };
-    void this.panel.webview.postMessage({ type: "graph", payload: { ...data, center: r.impact.center, strings } });
   }
 }
 

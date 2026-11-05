@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  buildSpawn, decorationPlan, displayName, explain, graphPayload, Impact, ImpactNode, langOf, parseOutput,
+  buildSpawn, decorationPlan, displayName, explain, Impact, ImpactNode, langOf, parseOutput,
   summaryText, tr, treeModel,
 } from "../src/core";
 
@@ -104,23 +104,4 @@ test("hover explains the source and each affected token, and stays silent elsewh
   assert.match(explain(impact, 3, 5)!, /only through a condition/);
   assert.equal(explain(impact, 9, 0), null);
   assert.equal(explain(impact, 4, 20), null);
-});
-
-test("a big result is cut to the nearest nodes and drawn as a tree", () => {
-  const big = sample();
-  const extra = Array.from({ length: 60 }, (_, i) => node({
-    id: `var:g:v${i}`, name: `v${i}`, level: 1,
-    path: [{ from: "var:price", to: `var:g:v${i}`, kind: "assign", lines: [1] }],
-  }));
-  big.nodes.push(...extra);
-  big.edges = [
-    ...extra.map((n) => ({ source: "var:price", target: n.id, kind: "assign", lines: [1] })),
-    ...extra.slice(1).map((n, i) => ({ source: extra[i].id, target: n.id, kind: "assign", lines: [1] })), // cross edges
-  ];
-  const payload = graphPayload(big, 50);
-  assert.equal(payload.nodes.length, 51);
-  assert.equal(payload.truncated, true);
-  assert.ok(payload.edges.every((e) => e.source === "var:price"), "only the edge that brought each node in");
-  const small = graphPayload(sample(), 150);
-  assert.equal(small.truncated, false);
 });

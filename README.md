@@ -141,8 +141,7 @@ cd vscode-impact && npm ci && npm run prepare-assets && npm test    # the editor
 ```
 core/pyflow/     analyzer (ast -> graph), impact / search / locate, CLI, the bridge used by the web page
 web/             the browser demo (Cytoscape.js + dagre)
-vscode-impact/   the VS Code extension that marks the answer in the editor (TypeScript; calls the analyzer through Python)
-vscode/          a second extension that shows the web page beside the editor
+vscode-impact/   the VS Code extension: marks the answer in the editor and opens the web view beside it (TypeScript)
 tests/           one small program per rule, with the expected answer worked out by hand
 examples/        four styles: script, pure functions, classes, data pipeline
 scripts/         vendor.py (pinned, hash-checked libraries), build_site.py, serve.py

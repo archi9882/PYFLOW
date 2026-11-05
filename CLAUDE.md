@@ -2,7 +2,7 @@
 
 **唯一要回答的問題：使用者關心的某個變數如果改變，哪些地方會跟著改變？**
 產品主軸是 `graph.impact()`：游標放在變數上，標出它的值可能到達的每個地方（變數、回傳值、輸出、受條件影響的地方），
-並說明路徑。介面共用同一個分析器：網頁（`web/`，預設是「會影響哪裡」模式）、命令列、以及兩個 VS Code 擴充功能
+並說明路徑。介面共用同一個分析器：網頁（`web/`，預設是「會影響哪裡」模式）、命令列、以及 VS Code 擴充功能
 （見「結構」）。分析在瀏覽器內以 Pyodide 執行，檔案不上傳。設計決策與理由見
 `docs/superpowers/specs/2026-10-28-pyflow-design.md`，功能與限制見 `README.zh-TW.md`，不在此重複。
 最近一輪的進度、尚未驗證的部分與待決事項見 `docs/handoff.md`，接續工作前先讀。
@@ -47,7 +47,7 @@ python scripts/build_site.py        # 只建置到 _site/
 
 ```bash
 cd vscode-impact && npm ci && npm run prepare-assets   # 複製分析器、下載圖形函式庫
-npm test                                               # 型別檢查 + 20 個測試（含真實 Python 與模擬編輯器）
+npm test                                               # 型別檢查 + 22 個測試（含真實 Python 與模擬編輯器）
 npx vsce package --no-dependencies --allow-missing-repository   # 產生 .vsix
 ```
 
@@ -61,12 +61,12 @@ npx vsce package --no-dependencies --allow-missing-repository   # 產生 .vsix
   不是 `ast` 的 UTF-8 位元組；中文與 emoji 在同一行時一定要驗證
 - `core/pyflow/api.py`：網頁透過 Pyodide 呼叫的 JSON 介面
 - `web/`：index.html、app.js、style.css；`scripts/vendor.py` 下載並驗證函式庫雜湊
-- `vscode/`：VS Code 擴充功能「流程視圖」（extension.js、package.json）：在編輯器旁開 Webview 載入整個網頁；
-  `media/` 由 `build_site.py vscode/media` 產生，不進版控
-- `vscode-impact/`：VS Code 擴充功能「改了會影響哪裡」（TypeScript）：在編輯器內標出答案、Explorer 清單、hover、狀態列、
-  輕量的圖形 webview。`src/core.ts` 是不依賴 `vscode` 的純邏輯（可用 Node 測試）；`extension.ts` 只負責接線；
+- `vscode-impact/`：VS Code 擴充功能「改了會影響哪裡」（TypeScript）：在編輯器內標出答案、Explorer 清單、hover、狀態列，
+  以及「完整視圖」（`src/fullView.ts`）：在編輯器旁載入與網頁相同的頁面，並隨游標改問該名稱。所有開圖的入口
+  （指令面板、狀態列、影響清單按鈕、「如果改變它…」）都通往完整視圖。`site/` 由 `npm run prepare-assets` 產生，
+  不進版控，擴充功能約 15 MB。`src/core.ts` 是不依賴 `vscode` 的純邏輯（可用 Node 測試）；`extension.ts` 只負責接線；
   `runner.ts` 以 `python -I -c` 啟動隨附的分析器，原始碼走 stdin，所以未儲存的修改也能分析。
-  **這兩個擴充功能尚未合併，是否合為一個由使用者決定**（見 `docs/handoff.md` 與 PR 說明）
+  舊的 `pyflow/vscode/` 擴充功能與輕量圖形頁已移除。
 - `web/flow.js`：詳細資料面板的分類（引數、回傳、結果去向），不碰 DOM，由 `tests/test_flow.py` 透過 Node 測試
 - `tests/`：每種語法一個小片段；`examples/`：四種風格的示範檔
 

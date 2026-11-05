@@ -20,7 +20,7 @@ attributes, containers and conditions, and marks every place in the editor.
    - places that change only through a condition are purple
 4. The **pyflow impact** view in the Explorer lists everything by kind. Click an item to jump to it.
 5. Hover a mark to see the path that leads to it, for example `price → line_total → Cart.items → subtotal()`.
-6. **pyflow: Show impact graph** draws the same result as a diagram.
+6. The graph opens beside the editor and is the same page as the web demo (**pyflow: Open the full view**, the status bar item, or step 2). It follows the cursor. It bundles the Python runtime (Pyodide), so the extension is about 15 MB.
 
 The marks describe the code as it is in the editor, including unsaved edits. If you edit the file, the
 marks are cleared (their positions would be wrong), and you run the command again.
@@ -58,7 +58,6 @@ A result near those spots may be incomplete.
 |---|---|---|
 | `pyflow.pythonPath` | empty | Python used for the analysis |
 | `pyflow.includeConditions` | on | follow `if` / loop conditions |
-| `pyflow.maxGraphNodes` | 150 | most nodes drawn in the graph (the list and marks always cover all) |
 
 The colors can be changed in your theme: `pyflow.sourceBackground`, `pyflow.affectedBackground`,
 `pyflow.conditionBackground`, `pyflow.effectBackground`, `pyflow.lineBackground`.
