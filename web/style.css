@@ -231,11 +231,10 @@ kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--border)
 .sw-down { background: var(--down); }
 .sw-center { background: var(--center); }
 .shape { width: 20px; height: 12px; border: 1.5px solid var(--muted); }
-.shape-fn { border-radius: 3px; background: var(--node-fn); }
-.shape-var { border-radius: 6px; background: var(--node-var); }
-.shape-attr { border-radius: 3px; background: var(--node-attr); }
-.shape-ext { border-radius: 3px; border-style: dashed; background: var(--node-ext); }
-.shape-grp { border-radius: 3px; border-style: dashed; background: var(--group); }
+/* Shape rows are generated from NODE_SHAPES (app.js) as inline SVG */
+.legend-sub { display: block; }
+.legend-sub ul { display: grid; gap: 5px; }
+.shape-svg { width: 20px; height: 12px; flex: none; overflow: visible; }
 .shape-flag { border-radius: 3px; border: 2px dashed var(--flag); }
 .line { width: 20px; height: 0; border-top: 2px solid var(--edge-call); }
 .line-data { border-top: 2px dashed var(--edge-data); }

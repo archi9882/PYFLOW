@@ -78,7 +78,7 @@
       "commandPalette": [
         {
           "command": "pyflow.showGraph",
-          "when": "pyflow.hasResult"
+          "when": "false"
         },
         {
           "command": "pyflow.clear",

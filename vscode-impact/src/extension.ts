@@ -84,13 +84,14 @@ class Controller {
     };
     this.treeView = vscode.window.createTreeView("pyflow.impact", { treeDataProvider: this.tree });
     this.status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
-    this.status.command = "pyflow.showGraph";
+    this.status.command = "pyflow.openFull"; // 狀態列的圖也開與網頁相同的完整視圖
 
     const subs = context.subscriptions;
     subs.push(
       this.treeView, this.status, ...Object.values(this.types),
       vscode.commands.registerCommand("pyflow.showImpact", () => this.showImpact()),
-      vscode.commands.registerCommand("pyflow.showGraph", () => this.showGraph()),
+      // 所有開圖的入口都通往與網頁相同的完整視圖；輕量圖頁（showGraph 方法）不再有入口，待移除
+      vscode.commands.registerCommand("pyflow.showGraph", () => vscode.commands.executeCommand("pyflow.openFull")),
       vscode.commands.registerCommand("pyflow.clear", () => this.clear()),
       vscode.commands.registerCommand("pyflow.reveal", (uri: vscode.Uri, line: number) => this.reveal(uri, line)),
       vscode.languages.registerHoverProvider({ language: "python" }, { provideHover: (doc, pos) => this.hover(doc, pos) }),

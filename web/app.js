@@ -46,7 +46,9 @@ const STRINGS = {
     "legend.up": "Upstream: where it comes from",
     "legend.center": "Selected",
     "legend.down": "Downstream: where it goes",
-    "legend.fn": "Function / method / class",
+    "legend.function": "Function",
+    "legend.method": "Method",
+    "legend.class": "Class",
     "legend.var": "Variable / parameter",
     "legend.attr": "Attribute (self.x, dataclass field)",
     "legend.ext": "External call (library, builtin)",
@@ -145,7 +147,9 @@ const STRINGS = {
     "legend.up": "上游：值從哪裡來",
     "legend.center": "目前選取",
     "legend.down": "下游：值往哪裡去",
-    "legend.fn": "函式／方法／類別",
+    "legend.function": "函式",
+    "legend.method": "方法",
+    "legend.class": "類別",
     "legend.var": "變數／參數",
     "legend.attr": "屬性（self.x、dataclass 欄位）",
     "legend.ext": "外部呼叫（函式庫、內建函式）",
@@ -794,6 +798,53 @@ function cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
+// One table drives both the graph (cytoscape shape) and the legend (SVG outline),
+// so the two cannot drift apart. Shapes are the only cue; no symbol prefixes.
+// pts: outline in a 20x12 box. dash: border style of the swatch.
+const NODE_SHAPES = {
+  function: { shape: "round-rectangle", fill: "--node-fn", i18n: "legend.function",
+    pts: "2,0.5 18,0.5 19.5,2 19.5,10 18,11.5 2,11.5 0.5,10 0.5,2" },
+  method: { shape: "hexagon", fill: "--node-fn", i18n: "legend.method",
+    pts: "4,0.5 16,0.5 19.5,6 16,11.5 4,11.5 0.5,6" },
+  class: { shape: "cut-rectangle", fill: "--node-fn", i18n: "legend.class",
+    pts: "3.5,0.5 16.5,0.5 19.5,3.5 19.5,8.5 16.5,11.5 3.5,11.5 0.5,8.5 0.5,3.5" },
+  variable: { shape: "ellipse", fill: "--node-var", i18n: "legend.var", ellipse: true },
+  attribute: { shape: "rhomboid", fill: "--node-attr", i18n: "legend.attr",
+    pts: "4,0.5 19.5,0.5 16,11.5 0.5,11.5" },
+  external: { shape: "tag", fill: "--node-ext", i18n: "legend.ext", dash: "3 2",
+    pts: "0.5,0.5 14,0.5 19.5,6 14,11.5 0.5,11.5" },
+  // Boxes: the class box has cut corners, the function box has round corners and a dotted edge.
+  classbox: { shape: "cut-rectangle", fill: "--group", i18n: "legend.grp", dash: "3 2",
+    pts: "3.5,0.5 16.5,0.5 19.5,3.5 19.5,8.5 16.5,11.5 3.5,11.5 0.5,8.5 0.5,3.5" },
+  fnbox: { shape: "round-rectangle", fill: "--group", i18n: "legend.fnbox", dash: "1 2",
+    pts: "2,0.5 18,0.5 19.5,2 19.5,10 18,11.5 2,11.5 0.5,10 0.5,2" },
+};
+
+// Fill the legend's shape rows from NODE_SHAPES (labels are translated by applyLanguage).
+function buildNodeLegend() {
+  const list = $("#legend-shapes");
+  list.replaceChildren();
+  const NS = "http://www.w3.org/2000/svg";
+  for (const spec of Object.values(NODE_SHAPES)) {
+    const svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("viewBox", "0 0 20 12");
+    svg.setAttribute("class", "shape-svg");
+    const el = document.createElementNS(NS, spec.ellipse ? "ellipse" : "polygon");
+    if (spec.ellipse) { el.setAttribute("cx", "10"); el.setAttribute("cy", "6"); el.setAttribute("rx", "9.5"); el.setAttribute("ry", "5.5"); }
+    else el.setAttribute("points", spec.pts);
+    el.setAttribute("fill", `var(${spec.fill})`);
+    el.setAttribute("stroke", "var(--muted)");
+    el.setAttribute("stroke-width", "1.2");
+    if (spec.dash) el.setAttribute("stroke-dasharray", spec.dash);
+    svg.append(el);
+    const label = document.createElement("span");
+    label.dataset.i18n = spec.i18n;
+    const li = document.createElement("li");
+    li.append(svg, label);
+    list.append(li);
+  }
+}
+
 function graphStyle() {
   const c = {
     text: cssVar("--text"), muted: cssVar("--muted"), up: cssVar("--up"), down: cssVar("--down"),
@@ -813,15 +864,20 @@ function graphStyle() {
     } },
     { selector: "node[kind = 'function'], node[kind = 'method'], node[kind = 'class'], node[kind = 'module']",
       style: { "background-color": c.fn, "font-weight": 600 } },
-    { selector: "node[kind = 'class']", style: { "shape": "cut-rectangle" } },
-    { selector: "node[kind = 'variable'], node[kind = 'parameter']", style: { "shape": "ellipse", "padding": "11px" } },
-    { selector: "node[kind = 'attribute']", style: { "background-color": c.attr, "shape": "round-rectangle" } },
-    { selector: "node[kind = 'external']", style: { "background-color": c.ext, "border-style": "dashed", "color": c.muted } },
+    { selector: "node[kind = 'function'], node[kind = 'module']", style: { "shape": NODE_SHAPES.function.shape } },
+    { selector: "node[kind = 'method']", style: { "shape": NODE_SHAPES.method.shape, "padding": "13px" } },
+    { selector: "node[kind = 'class']", style: { "shape": NODE_SHAPES.class.shape, "padding": "11px" } },
+    { selector: "node[kind = 'variable'], node[kind = 'parameter']", style: { "shape": NODE_SHAPES.variable.shape, "padding": "11px" } },
+    { selector: "node[kind = 'attribute']", style: { "background-color": c.attr, "shape": NODE_SHAPES.attribute.shape, "padding": "13px" } },
+    { selector: "node[kind = 'external']", style: {
+      "background-color": c.ext, "border-style": "dashed", "color": c.muted, "shape": NODE_SHAPES.external.shape, "padding": "13px" } },
     { selector: "node[kind = 'group']", style: {
       "background-color": c.group, "background-opacity": 0.9, "border-style": "dashed", "border-color": c.border,
-      "border-width": 1.5, "shape": "round-rectangle", "padding": "14px",
+      "border-width": 1.5, "shape": NODE_SHAPES.classbox.shape, "padding": "14px",
       "text-valign": "top", "text-halign": "center", "text-margin-y": -4, "font-weight": 600, "color": c.muted,
     } },
+    // The function box is told apart from the class box by round corners and a dotted edge.
+    { selector: "node[kind = 'group'][box = 'fn']", style: { "shape": NODE_SHAPES.fnbox.shape, "border-style": "dotted", "border-width": 2 } },
     { selector: "node[side = 'up']", style: { "border-color": c.up, "border-width": 2.5 } },
     { selector: "node[side = 'down']", style: { "border-color": c.down, "border-width": 2.5 } },
     { selector: "node[influence = 'condition']", style: { "border-color": c.cond, "border-style": "dashed", "border-width": 2.5 } },
@@ -885,8 +941,8 @@ function buildElements(sub) {
   const seen = new Map();
   sub.nodes.forEach((n) => { if (n.kind === "variable" || n.kind === "parameter") seen.set(n.name, (seen.get(n.name) || 0) + 1); });
   return [
-    ...(fnBox ? [{ data: { id: fnBox, label: `${scopeLabel(sub.scope)}()`, kind: "group" } }] : []),
-    ...groups.map((g) => ({ data: { id: `grp:${g}`, label: g, kind: "group" } })),
+    ...(fnBox ? [{ data: { id: fnBox, label: `${scopeLabel(sub.scope)}()`, kind: "group", box: "fn" } }] : []),
+    ...groups.map((g) => ({ data: { id: `grp:${g}`, label: g, kind: "group", box: "class" } })),
     ...sub.nodes.map((n) => {
       const g = inBox(n) ? null : groupOf(n);
       const parent = inBox(n) ? fnBox : g && groupSet.has(g) ? `grp:${g}` : undefined;
@@ -1717,6 +1773,7 @@ function bindEvents() {
 
 // cytoscape-dagre registers itself when loaded after cytoscape; register again only if it did not.
 try { if (window.cytoscapeDagre) cytoscape.use(window.cytoscapeDagre); } catch (_) { /* already registered */ }
+buildNodeLegend();
 applyLanguage();
 bindEvents();
 setMode(state.mode, false);

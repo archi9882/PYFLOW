@@ -119,31 +119,18 @@ test("each problem gets a message that says what to do", async () => {
   assert.deepEqual(fake.log.messages.at(-1), ["info", "pyflow works on Python files."]);
 });
 
-test("the graph panel gets the result, can ask for a line, and is closed by clear", async () => {
+test("every way to open the graph opens the full view, the same page as the web version", async () => {
   const { fake } = setup();
   const editor = makeEditor(SOURCE, 0, 10);
   fake.state.active = editor; fake.state.visible = [editor];
+
+  // 沒有先跑分析也能開（完整視圖自己依游標問答案）；showGraph 指令與狀態列都走同一條路
   await fake.handlers.get("pyflow.showGraph")!();
-  assert.match(fake.log.messages.at(-1)![1], /Run "What changes/, "nothing to show before a result exists");
+  assert.equal(fake.log.panels.length, 1);
+  assert.equal(fake.log.panels[0].id, "pyflow.full");
 
   await fake.handlers.get("pyflow.showImpact")!();
-  await fake.handlers.get("pyflow.showGraph")!();
-  const panel = fake.log.panels[0];
-  assert.match(panel.webview.html, /script-src 'nonce-[0-9a-f]{32}'/);
-  assert.match(panel.webview.html, /webview:.*media\/vendor\/cytoscape\.min\.js/);
-
-  panel.send({ type: "ready" });
-  const sent = fake.log.posted.at(-1);
-  assert.equal(sent.type, "graph");
-  assert.equal(sent.payload.center, "var:total:price");
-  assert.ok(sent.payload.nodes.length >= 4 && sent.payload.strings.title.includes("If total.price changes"));
-
-  panel.send({ type: "reveal", line: 5 });
-  await new Promise((r) => setTimeout(r, 10));
-  assert.equal(editor.revealed.at(-1)!.start.line, 4);
-
-  await fake.handlers.get("pyflow.clear")!();
-  assert.equal(panel.disposed, true);
+  assert.equal(fake.state.status[0].command, "pyflow.openFull");
 });
 
 test("Chinese UI strings are used when VS Code runs in Chinese", async () => {

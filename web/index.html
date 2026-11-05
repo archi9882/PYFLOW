@@ -92,12 +92,8 @@
           <li><i class="sw sw-up"></i><span data-i18n="legend.up">Upstream: where it comes from</span></li>
           <li><i class="sw sw-center"></i><span data-i18n="legend.center">Selected</span></li>
           <li><i class="sw sw-down"></i><span data-i18n="legend.down">Downstream: where it goes</span></li>
-          <li><i class="shape shape-fn"></i><span data-i18n="legend.fn">Function / method / class</span></li>
-          <li><i class="shape shape-var"></i><span data-i18n="legend.var">Variable / parameter</span></li>
-          <li><i class="shape shape-attr"></i><span data-i18n="legend.attr">Attribute (self.x, dataclass field)</span></li>
-          <li><i class="shape shape-ext"></i><span data-i18n="legend.ext">External call (library, builtin)</span></li>
-          <li><i class="shape shape-grp"></i><span data-i18n="legend.grp">Class box: its methods and attributes</span></li>
-          <li><i class="shape shape-grp"></i><span data-i18n="legend.fnbox">Function box: its parameters and locals</span></li>
+          <!-- Node and box shapes: built by buildNodeLegend() from NODE_SHAPES in app.js -->
+          <li class="legend-sub"><ul id="legend-shapes"></ul></li>
           <li><i class="shape shape-flag"></i><span data-i18n="legend.flag">Has constructs pyflow cannot follow</span></li>
           <li><i class="line line-call"></i><span data-i18n="legend.call">Call</span></li>
           <li><i class="line line-data"></i><span data-i18n="legend.data">Data flow</span></li>
