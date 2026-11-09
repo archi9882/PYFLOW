@@ -2,7 +2,7 @@
 
 最後更新：2026-11-03　分支：已併入 main（PR #2），原分支 `pyflow-vscode-extension` 已刪除
 
-給下一個 session：先讀 `pyflow/CLAUDE.md`，再讀這份。這份只記錄這一輪的進度、
+給下一個 session：先讀 `CLAUDE.md`，再讀這份。這份只記錄這一輪的進度、
 尚未驗證的部分與待決事項；設計理由見 `docs/superpowers/specs/2026-10-28-pyflow-design.md`。
 
 ## 這一輪做了什麼

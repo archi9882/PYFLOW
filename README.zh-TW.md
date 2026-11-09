@@ -11,7 +11,7 @@
 ![pyflow 回答「如果 Product.price 改變」：16 處受影響](docs/images/demo.gif)
 
 **直接在瀏覽器試用，不需安裝：**
-[開啟示範](https://archi9882.github.io/SciML/#ex=class_based.py&q=Product.price&m=impact)，
+[開啟示範](https://archi9882.github.io/PYFLOW/#ex=class_based.py&q=Product.price&m=impact)，
 再把你自己的 `.py` 檔拖到頁面上。檔案不會離開你的瀏覽器。
 
 ## 三種使用方式

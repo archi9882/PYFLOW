@@ -30,9 +30,10 @@
 - 條件（if／迴圈／守衛式提前返回）也算影響，但以 `control` 邊與 `influence: "condition"` 另外標示，可關閉。
 - 物件取決於其建構子引數；`self.x` 是以類別為單位的屬性節點。
 - 名稱 pyflow、MIT 授權，著作權人維持 `archi9882`。README 英文為主，另附繁體中文。
-- GitHub repo 已改名為 `archi9882/SciML`。是否把 pyflow 搬到獨立 repo 尚未決定，目前不要改路徑或網址。
+- pyflow 已於 2026-11-10 搬到獨立 repo `archi9882/PYFLOW`（歷史以 `git subtree split` 帶過來）。
+  舊位置 `archi9882/SciML` 的 `pyflow/` 之後不再更新；舊提交與 PR #1、#2 留在那邊。
 
-## 指令（在 `pyflow/` 底下執行）
+## 指令（在專案根目錄執行）
 
 ```bash
 python -m pytest                    # 110 個測試，改動後不應減少（test_flow.py 需要 Node，沒有就略過）
@@ -93,7 +94,7 @@ npx vsce package --no-dependencies --allow-missing-repository   # 產生 .vsix
 ## 版本控制
 
 - `.venv/`、`_site/`、`.vendor-cache/` 不進版控。
-- 每項工作從最新的 `main` 開新分支，不要直接推到 `main`。PR #1、#2 已併入 `main`，它們的分支不再使用。
+- 每項工作從最新的 `main` 開新分支，不要直接推到 `main`。（PR #1、#2 在舊 repo `archi9882/SciML`，已併入其 `main`，分支不再使用。）
 - 保持 git 圖是一條直線：分支壽命要短，一項工作做完就開 PR；工作期間不要把 `main` 合併進分支
   （會多出菱形）。合併 PR 一律用 Squash and merge，每個 PR 在 `main` 上只留一個提交。
   若 `main` 前進造成衝突，在 PR 頁面或用 rebase 解決，不要另外產生「合併 main」的提交。
@@ -105,8 +106,9 @@ npx vsce package --no-dependencies --allow-missing-repository   # 產生 .vsix
 
 ## 尚未驗證（雲端環境做不到）
 
-- `vscode-impact/` 在真實 VS Code 中的行為（只在模擬 API 與型別檢查下驗證過）；Python 擴充套件的直譯器偵測也沒實測。
-- 發布到 Marketplace：需要使用者自己的 publisher 帳號；`package.json` 的 `publisher`、`repository` 在搬到獨立 repo 後要更新。
+- `vscode-impact/` 的完整視圖、各入口與游標追蹤已由使用者在真實 VS Code 驗證（2026-11-09）；
+  Python 擴充套件的直譯器偵測仍沒實測。
+- 發布到 Marketplace：需要使用者自己的 publisher 帳號；`package.json` 的 `publisher` 要確認為其 ID。
 - README 的動畫是網頁示範的畫面，不是 VS Code 的畫面；擴充功能的真實截圖要在本機補。
 
 ## 已知限制與後續

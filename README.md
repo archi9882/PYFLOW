@@ -11,7 +11,7 @@ such as `print` or `write`. For each place it can show the path that leads there
 ![pyflow answering "if Product.price changes": 16 places are affected](docs/images/demo.gif)
 
 **Try it in your browser, nothing to install:**
-[open the demo](https://archi9882.github.io/SciML/#ex=class_based.py&q=Product.price&m=impact),
+[open the demo](https://archi9882.github.io/PYFLOW/#ex=class_based.py&q=Product.price&m=impact),
 then drop your own `.py` file on the page. Your file never leaves your browser.
 
 ## Two ways to use it

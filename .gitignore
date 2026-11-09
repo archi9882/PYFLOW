@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# 網頁建置輸出與下載的函式庫快取（可重新產生）
+_site/
+.vendor-cache/
+
+# 個人測試檔與編輯器設定，不進版控
+local/
+.vscode/

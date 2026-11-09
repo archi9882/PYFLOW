@@ -65,4 +65,4 @@ The colors can be changed in your theme: `pyflow.sourceBackground`, `pyflow.affe
 ## Feedback
 
 If a result is wrong, a small snippet of code and what you expected is the most useful report.
-Open an issue at https://github.com/archi9882/SciML/issues. MIT licensed.
+Open an issue at https://github.com/archi9882/PYFLOW/issues. MIT licensed.

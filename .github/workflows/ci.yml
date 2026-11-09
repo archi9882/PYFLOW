@@ -1,0 +1,79 @@
+# Test the pyflow analyzer and the VS Code extension on every change, and publish the
+# web demo to GitHub Pages when main is updated.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # 3.12 matches the Python inside Pyodide 0.26; 3.13 is the latest release.
+        python-version: ["3.10", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pip install pytest
+      - run: python -m pytest -q
+
+  extension:
+    # The VS Code extension: type-check, unit tests with the real analyzer, and the packaged .vsix.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: vscode-impact
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: vscode-impact/package-lock.json
+      - run: npm ci
+      - run: npm run prepare-assets
+      - run: npm test
+      - run: npx vsce package --no-dependencies --allow-missing-repository --out pyflow.vsix
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pyflow-vsix
+          path: vscode-impact/pyflow.vsix
+
+  deploy:
+    # Only publish from main, after the tests pass.
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python scripts/build_site.py _site
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
