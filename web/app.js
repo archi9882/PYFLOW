@@ -845,6 +845,21 @@ function buildNodeLegend() {
   }
 }
 
+// 標籤最長一行的字元數與行數（節點 padding 的依據）。
+function labelCols(ele) {
+  return Math.max(1, ...String(ele.data("label") || "").split("\n").map((s) => s.length));
+}
+function labelRows(ele) {
+  return String(ele.data("label") || "").split("\n").length;
+}
+// 橢圓：單行 11px 已足夠；兩行以上文字方塊較高，四個角更容易切到弧線，須隨字數加大。
+// 三行以上沒有實測，每多一行再加 4px 作保守估計。
+function ellipsePad(ele) {
+  const rows = labelRows(ele);
+  if (rows <= 1) return 11;
+  return Math.ceil(0.5 * labelCols(ele) + 9) + 4 * (rows - 2);
+}
+
 function graphStyle() {
   const c = {
     text: cssVar("--text"), muted: cssVar("--muted"), up: cssVar("--up"), down: cssVar("--down"),
@@ -865,12 +880,19 @@ function graphStyle() {
     { selector: "node[kind = 'function'], node[kind = 'method'], node[kind = 'class'], node[kind = 'module']",
       style: { "background-color": c.fn, "font-weight": 600 } },
     { selector: "node[kind = 'function'], node[kind = 'module']", style: { "shape": NODE_SHAPES.function.shape } },
-    { selector: "node[kind = 'method']", style: { "shape": NODE_SHAPES.method.shape, "padding": "13px" } },
+    { selector: "node[kind = 'method']", style: {
+      "shape": NODE_SHAPES.method.shape, "padding": (ele) => `${Math.ceil(0.55 * labelCols(ele) + 8)}px` } },
     { selector: "node[kind = 'class']", style: { "shape": NODE_SHAPES.class.shape, "padding": "11px" } },
-    { selector: "node[kind = 'variable'], node[kind = 'parameter']", style: { "shape": NODE_SHAPES.variable.shape, "padding": "11px" } },
-    { selector: "node[kind = 'attribute']", style: { "background-color": c.attr, "shape": NODE_SHAPES.attribute.shape, "padding": "13px" } },
+    // 斜邊、尖角、橢圓弧都會切掉文字方塊的角，而且斜邊的內縮量與寬度成正比，
+    // 所以 padding 依標籤字元數與行數計算（字型等寬）。係數由實測得到：
+    // 在頁面上逐一加大 padding，直到文字方塊四個角都落在形狀內，再對字元數擬合。
+    { selector: "node[kind = 'variable'], node[kind = 'parameter']", style: {
+      "shape": NODE_SHAPES.variable.shape, "padding": (ele) => `${ellipsePad(ele)}px` } },
+    { selector: "node[kind = 'attribute']", style: {
+      "background-color": c.attr, "shape": NODE_SHAPES.attribute.shape, "padding": (ele) => `${Math.ceil(2 * labelCols(ele) + 10)}px` } },
     { selector: "node[kind = 'external']", style: {
-      "background-color": c.ext, "border-style": "dashed", "color": c.muted, "shape": NODE_SHAPES.external.shape, "padding": "13px" } },
+      "background-color": c.ext, "border-style": "dashed", "color": c.muted, "shape": NODE_SHAPES.external.shape,
+      "padding": (ele) => `${Math.ceil(0.7 * labelCols(ele) + 11)}px` } },
     { selector: "node[kind = 'group']", style: {
       "background-color": c.group, "background-opacity": 0.9, "border-style": "dashed", "border-color": c.border,
       "border-width": 1.5, "shape": NODE_SHAPES.classbox.shape, "padding": "14px",
