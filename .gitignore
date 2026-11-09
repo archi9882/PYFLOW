@@ -9,6 +9,7 @@ venv/
 _site/
 .vendor-cache/
 
-# 個人測試檔與編輯器設定，不進版控
+# 個人測試檔與個人編輯器設定（settings.json）不進版控；tasks.json 納入版控
 local/
-.vscode/
+.vscode/*
+!.vscode/tasks.json

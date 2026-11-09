@@ -1,0 +1,20 @@
+{
+  // Opens a second VS Code window with the pyflow extension (vscode-impact/) loaded from source.
+  // Not a launch.json debug config: starting through the debugger crashed the
+  // extension host (exit code 134) on one machine, while a plain launch works.
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "pyflow extension",
+      "type": "shell",
+      "command": "code",
+      "args": [
+        "--new-window",
+        "--extensionDevelopmentPath=${workspaceFolder}/vscode-impact",
+        "${workspaceFolder}"
+      ],
+      "presentation": { "reveal": "silent" },
+      "problemMatcher": []
+    }
+  ]
+}

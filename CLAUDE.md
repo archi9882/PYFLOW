@@ -30,6 +30,7 @@
 - 條件（if／迴圈／守衛式提前返回）也算影響，但以 `control` 邊與 `influence: "condition"` 另外標示，可關閉。
 - 物件取決於其建構子引數；`self.x` 是以類別為單位的屬性節點。
 - 名稱 pyflow、MIT 授權，著作權人維持 `archi9882`。README 英文為主，另附繁體中文。
+- 完整視圖只跟隨文字游標，不做「滑鼠停留在變數上就更新」（2026-11-10 決定放棄）。
 - pyflow 已於 2026-11-10 搬到獨立 repo `archi9882/PYFLOW`（歷史以 `git subtree split` 帶過來）。
   舊位置 `archi9882/SciML` 的 `pyflow/` 之後不再更新；舊提交與 PR #1、#2 留在那邊。
 
